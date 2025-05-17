@@ -103,10 +103,12 @@
                     {% elif current_user.role == 'teacher' %}
                         <a href="{{ url_for('dashboard') }}" class="nav-link">Dashboard</a>
                         <a href="{{ url_for('create_exam') }}" class="nav-link">Create Exam</a>
+                        <a href="{{ url_for('teacher_assignments') }}" class="nav-link">Assignments</a>
                     {% else %}
                         <a href="{{ url_for('dashboard') }}" class="nav-link">Dashboard</a>
                         <a href="{{ url_for('my_exams') }}" class="nav-link">My Exams</a>
                         <a href="{{ url_for('my_results') }}" class="nav-link">My Results</a>
+                        <a href="{{ url_for('student_assignments') }}" class="nav-link">Assignments</a>
                     {% endif %}
                     <a href="{{ url_for('logout') }}" class="btn-neon">Logout</a>
                 {% else %}

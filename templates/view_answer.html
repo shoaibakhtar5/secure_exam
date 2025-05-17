@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}View Answer{% endblock %}
+{% block content %}
+<div class="max-w-2xl mx-auto">
+    <div class="glass-bg p-8 rounded-lg mb-6">
+        <h1 class="text-2xl font-bold mb-2" style="color: var(--neon-blue)">Answer for {{ exam.title }}</h1>
+        <p class="text-gray-400">Student: <span class="font-semibold">{{ student.username }}</span></p>
+        <p class="text-gray-400">Exam: <span class="font-semibold">{{ exam.title }}</span> ({{ exam.exam_type|title }})</p>
+        <p class="text-gray-400">Submitted at: <span class="font-semibold">{{ answer.submitted_at.strftime('%Y-%m-%d %H:%M') }}</span></p>
+    </div>
+    <div class="glass-bg p-8 rounded-lg">
+        <h2 class="text-xl font-semibold mb-4">Answer Content</h2>
+        <pre class="bg-gray-900 text-green-300 p-4 rounded-lg overflow-x-auto whitespace-pre-wrap" style="font-size:1.1rem;line-height:1.6;">{{ answer.answer_text }}</pre>
+    </div>
+    <div class="flex justify-end mt-6">
+        <a href="{{ url_for('exam_submissions', exam_id=exam.id) }}" class="btn-neon px-6 py-2 rounded-lg">Back to Submissions</a>
+    </div>
+</div>
+{% endblock %} 

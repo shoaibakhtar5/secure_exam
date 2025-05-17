@@ -59,8 +59,7 @@
                 <tr class="border-b border-gray-800">
                     <td class="py-4">{{ students[answer.user_id].username }}</td>
                     <td class="py-4">
-                        <button type="button" class="underline text-blue-400 hover:text-blue-200" onclick="toggleAnswer('answer-{{ answer.id }}')">View</button>
-                        <div id="answer-{{ answer.id }}" class="hidden mt-2 text-gray-300">{{ answer.answer_text }}</div>
+                        <a href="{{ url_for('view_answer', answer_id=answer.id) }}" class="underline text-blue-400 hover:text-blue-200">View</a>
                     </td>
                     <td class="py-4">
                         <form method="get" action="#">
@@ -125,12 +124,39 @@ function openPlagiarismModal(examId, answerId) {
                     let badgeColor = sim > 70 ? 'bg-red-500' : sim > 40 ? 'bg-yellow-500' : 'bg-green-500';
                     html += `<tr><td class='py-2'>${other}</td><td class='py-2'><span class='px-2 py-1 rounded-full text-xs ${badgeColor}'>${sim}%</span><br><span class='text-xs ${badgeColor} font-bold'>${badge}</span></td><td class='py-2'>`;
                     if (r.details) {
-                        html += `<div class='space-y-1'>`;
-                        if (r.details.tfidf !== undefined) html += `<div><span class='font-semibold'>TF-IDF:</span> <span class='font-mono'>${r.details.tfidf}%</span> <div class='w-full h-2 bg-gray-800 rounded'><div class='h-2 rounded ${getBarColor(r.details.tfidf)}' style='width:${r.details.tfidf}%;'></div></div></div>`;
-                        if (r.details.rabin_karp !== undefined) html += `<div><span class='font-semibold'>Rabin-Karp:</span> <span class='font-mono'>${r.details.rabin_karp}%</span> <div class='w-full h-2 bg-gray-800 rounded'><div class='h-2 rounded ${getBarColor(r.details.rabin_karp)}' style='width:${r.details.rabin_karp}%;'></div></div></div>`;
-                        if (r.details.levenshtein !== undefined) html += `<div><span class='font-semibold'>Levenshtein:</span> <span class='font-mono'>${r.details.levenshtein}%</span> <div class='w-full h-2 bg-gray-800 rounded'><div class='h-2 rounded ${getBarColor(r.details.levenshtein)}' style='width:${r.details.levenshtein}%;'></div></div></div>`;
-                        if (r.details.kmp !== undefined) html += `<div><span class='font-semibold'>KMP:</span> <span class='font-mono'>${r.details.kmp}%</span> <div class='w-full h-2 bg-gray-800 rounded'><div class='h-2 rounded ${getBarColor(r.details.kmp)}' style='width:${r.details.kmp}%;'></div></div></div>`;
-                        html += `</div>`;
+                        html += `<table class='w-full text-xs mt-2'>`;
+                        html += `<thead><tr><th class='text-left'>Algorithm</th><th class='text-left'>Score</th><th class='text-left'>Visual</th></tr></thead><tbody>`;
+                        const algos = ['ml', 'tfidf', 'rabin_karp', 'levenshtein', 'kmp', 'ast'];
+                        const labels = {
+                            ml: 'ML Similarity',
+                            tfidf: 'TF-IDF',
+                            rabin_karp: 'Rabin-Karp',
+                            levenshtein: 'Levenshtein',
+                            kmp: 'KMP',
+                            ast: 'AST (Python)'
+                        };
+                        algos.forEach(algo => {
+                            let score = r.details[algo];
+                            let showMsg = score !== undefined && score !== null && score > 70;
+                            html += `<tr><td>${labels[algo]}</td>`;
+                            if (score !== undefined && score !== null) {
+                                html += `<td>${score}%</td><td><div class='w-32 h-2 bg-gray-800 rounded'><div class='h-2 rounded ${getBarColor(score)}' style='width:${score}%;'></div></div>`;
+                                if (showMsg) {
+                                    let msg = '';
+                                    if (algo === 'ml' || algo === 'tfidf') msg = 'High overall similarity in content/phrasing.';
+                                    if (algo === 'rabin_karp') msg = 'Large matching text fragments detected.';
+                                    if (algo === 'levenshtein') msg = 'Minor edits or paraphrasing detected.';
+                                    if (algo === 'kmp') msg = 'Repeated patterns or copied phrases detected.';
+                                    if (algo === 'ast') msg = 'Code logic/structure is highly similar (possible code copying, even with variable renaming).';
+                                    html += `<div class='text-xs text-yellow-300 mt-1'>${msg}</div>`;
+                                }
+                                html += `</td>`;
+                            } else {
+                                html += `<td class='text-gray-500'>N/A</td><td></td>`;
+                            }
+                            html += `</tr>`;
+                        });
+                        html += `</tbody></table>`;
                     } else {
                         html += `<span class='text-gray-400'>No details available</span>`;
                     }

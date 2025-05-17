@@ -51,60 +51,6 @@
         </div>
     </div>
 
-    <!-- Submission Timeline -->
-    <div class="glass-bg p-6 rounded-lg">
-        <h2 class="text-2xl font-bold mb-4">Recent Submissions</h2>
-        <div class="overflow-x-auto">
-            <table class="w-full">
-                <thead>
-                    <tr class="text-left border-b border-gray-700">
-                        <th class="pb-3">Student</th>
-                        <th class="pb-3">Exam</th>
-                        <th class="pb-3">Type</th>
-                        <th class="pb-3">Submission Time</th>
-                        <th class="pb-3">Status</th>
-                        <th class="pb-3">Plagiarism Score</th>
-                        <th class="pb-3">Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for submission in recent_submissions %}
-                    <tr class="border-b border-gray-800">
-                        <td class="py-4">{{ submission.student_name }}</td>
-                        <td class="py-4">{{ submission.exam_title }}</td>
-                        <td class="py-4">{{ submission.exam_type }}</td>
-                        <td class="py-4">{{ submission.submission_time }}</td>
-                        <td class="py-4">
-                            <span class="px-2 py-1 rounded-full text-sm 
-                                {% if submission.status == 'pending' %}bg-yellow-900 text-yellow-300
-                                {% elif submission.status == 'graded' %}bg-green-900 text-green-300
-                                {% else %}bg-red-900 text-red-300{% endif %}">
-                                {{ submission.status }}
-                            </span>
-                        </td>
-                        <td class="py-4">
-                            {% if submission.plagiarism_score %}
-                            <span class="px-2 py-1 rounded-full text-sm 
-                                {% if submission.plagiarism_score > 70 %}bg-red-900 text-red-300
-                                {% elif submission.plagiarism_score > 30 %}bg-yellow-900 text-yellow-300
-                                {% else %}bg-green-900 text-green-300{% endif %}">
-                                {{ submission.plagiarism_score }}%
-                            </span>
-                            {% else %}
-                            <span class="text-gray-500">-</span>
-                            {% endif %}
-                        </td>
-                        <td class="py-4">
-                            <a href="{{ url_for('view_submission', submission_id=submission.id) }}" 
-                               class="btn-neon px-4 py-2 rounded-lg">View</a>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-
     <!-- My Exams Section -->
     <div class="glass-bg p-6 rounded-lg">
         <h2 class="text-2xl font-bold mb-6">My Exams</h2>
@@ -169,7 +115,7 @@
         data: {
             labels: ['Plagiarized', 'Original'],
             datasets: [{
-                data: [{{ plagiarized_count }}, {{ total_submissions - plagiarized_count }}],
+                data: {{ [plagiarized_count, total_submissions - plagiarized_count]|tojson }},
                 backgroundColor: ['#ef4444', '#22c55e']
             }]
         },

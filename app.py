@@ -11,6 +11,11 @@ import re
 import subprocess
 import tempfile
 import os
+import ast
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+from werkzeug.utils import secure_filename
+import mimetypes
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
@@ -83,6 +88,29 @@ class Question(db.Model):
     correct_option = db.Column(db.Integer)  # Index of correct option for MCQ
     test_cases = db.Column(db.Text)  # JSON string for coding questions
     expected_output = db.Column(db.Text)  # JSON string for coding questions
+
+class Assignment(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(200), nullable=False)
+    description = db.Column(db.Text)
+    due_date = db.Column(db.DateTime, nullable=False)
+    created_by = db.Column(db.Integer, db.ForeignKey('user.id'))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    allowed_file_types = db.Column(db.String(200))
+    assignment_filename = db.Column(db.String(255))
+    assignment_file_path = db.Column(db.String(255))
+
+class AssignmentSubmission(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    assignment_id = db.Column(db.Integer, db.ForeignKey('assignment.id'))
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    filename = db.Column(db.String(255))
+    file_path = db.Column(db.String(255))
+    submitted_at = db.Column(db.DateTime, default=datetime.utcnow)
+    marks = db.Column(db.Float)
+    comment = db.Column(db.Text)
+    similarity_score = db.Column(db.Float)
+    status = db.Column(db.String(20), default='pending')
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -209,6 +237,8 @@ def dashboard():
         ).order_by(Answer.submitted_at.desc()).limit(10):
             exam = Exam.query.get(answer.exam_id)
             student = User.query.get(answer.user_id)
+            file_url = getattr(answer, 'file_path', '') or ''
+            file_name = getattr(answer, 'filename', '') or ''
             recent_submissions.append({
                 'id': answer.id,
                 'student_name': student.username,
@@ -216,7 +246,12 @@ def dashboard():
                 'exam_type': exam.exam_type,
                 'submission_time': answer.submitted_at.strftime('%Y-%m-%d %H:%M'),
                 'status': answer.status,
-                'plagiarism_score': round(answer.similarity_score, 1) if answer.similarity_score else None
+                'plagiarism_score': round(answer.similarity_score, 1) if answer.similarity_score else None,
+                'exam_id': answer.exam_id,
+                'file_url': file_url,
+                'file_name': file_name,
+                'marks': answer.score,
+                'comment': answer.comment
             })
         
         return render_template('teacher_dashboard.html',
@@ -591,15 +626,40 @@ def api_check_plagiarism(exam_id, answer_id):
             Answer.id != answer_id
         ).all()
         for other in other_answers:
-            similarity = check_code_similarity(current_answer.answer_text, other.answer_text)
-            if similarity > 30:  # Only report if similarity is above 30%
+            # Multi-algorithm comparison
+            details = {}
+            from utils.plagiarism_detector import PlagiarismDetector
+            detector = PlagiarismDetector()
+            rabin_karp_score = detector.rabin_karp(current_answer.answer_text, other.answer_text)
+            levenshtein_score = detector.levenshtein_distance(current_answer.answer_text, other.answer_text)
+            kmp_score = detector.kmp_search(current_answer.answer_text, other.answer_text)
+            # AST-based comparison for Python
+            ast_score = None
+            if exam.programming_language and exam.programming_language.lower() == 'python':
+                try:
+                    ast_score = compare_python_ast(current_answer.answer_text, other.answer_text)
+                except Exception:
+                    ast_score = None
+            # ML-based similarity (TF-IDF + cosine)
+            ml_score = ml_similarity(current_answer.answer_text, other.answer_text)
+            details = {
+                'ml': round(ml_score, 2),
+                'rabin_karp': round(rabin_karp_score, 2),
+                'levenshtein': round(levenshtein_score, 2),
+                'kmp': round(kmp_score, 2),
+                'ast': round(ast_score, 2) if ast_score is not None else None
+            }
+            # Aggregate score (weighted)
+            scores = [s for s in [ml_score, rabin_karp_score, levenshtein_score, kmp_score, ast_score] if s is not None]
+            similarity = sum(scores) / len(scores) if scores else 0
+            if similarity > 30:
                 results.append({
                     'student1': current_answer.id,
                     'student2': other.id,
                     'student1_name': User.query.get(current_answer.user_id).username,
                     'student2_name': User.query.get(other.user_id).username,
                     'similarity': round(similarity, 1),
-                    'details': None
+                    'details': details
                 })
     else:
         # For regular exams, use AdvancedPlagiarismChecker
@@ -611,15 +671,41 @@ def api_check_plagiarism(exam_id, answer_id):
         plagiarism_results = checker.check_all(submissions)
         for r in plagiarism_results:
             if (r['student1'] == answer_id or r['student2'] == answer_id) and r['similarity'] > 30:
+                ml_score = ml_similarity(
+                    next((s[1] for s in submissions if s[0] == r['student1']), ''),
+                    next((s[1] for s in submissions if s[0] == r['student2']), '')
+                )
+                details = {
+                    'ml': round(ml_score, 2),
+                    'tfidf': round(r['similarity'], 2)
+                }
                 results.append({
                     'student1': r['student1'],
                     'student2': r['student2'],
                     'student1_name': students.get(r['student1'], 'Unknown'),
                     'student2_name': students.get(r['student2'], 'Unknown'),
                     'similarity': r['similarity'],
-                    'details': None
+                    'details': details
                 })
     return jsonify({'results': sorted(results, key=lambda x: x['similarity'], reverse=True)})
+
+def compare_python_ast(code1, code2):
+    try:
+        tree1 = ast.dump(ast.parse(code1))
+        tree2 = ast.dump(ast.parse(code2))
+        matcher = difflib.SequenceMatcher(None, tree1, tree2)
+        return matcher.ratio() * 100
+    except Exception:
+        return 0
+
+def ml_similarity(text1, text2):
+    try:
+        vectorizer = TfidfVectorizer()
+        tfidf = vectorizer.fit_transform([text1, text2])
+        score = cosine_similarity(tfidf[0:1], tfidf[1:2])[0][0]
+        return score * 100
+    except Exception:
+        return 0
 
 @app.route('/api/run_tests', methods=['POST'])
 @login_required
@@ -767,6 +853,177 @@ def delete_exam(exam_id):
     db.session.commit()
     flash('Exam and all related data deleted successfully.', 'success')
     return redirect(url_for('dashboard'))
+
+ASSIGNMENT_UPLOAD_FOLDER = os.path.join(os.getcwd(), 'assignment_files')
+os.makedirs(ASSIGNMENT_UPLOAD_FOLDER, exist_ok=True)
+
+@app.route('/create_assignment', methods=['GET', 'POST'])
+@login_required
+def create_assignment():
+    if current_user.role != 'teacher':
+        flash('Only teachers can create assignments.', 'error')
+        return redirect(url_for('dashboard'))
+    if request.method == 'POST':
+        title = request.form.get('title')
+        description = request.form.get('description')
+        due_date = request.form.get('due_date')
+        allowed_file_types = request.form.get('allowed_file_types')
+        file = request.files.get('assignment_file')
+        assignment_filename = None
+        assignment_file_path = None
+        if file and file.filename:
+            assignment_filename = secure_filename(file.filename)
+            assignment_file_path = os.path.join(ASSIGNMENT_UPLOAD_FOLDER, assignment_filename)
+            file.save(assignment_file_path)
+        due_date_dt = datetime.strptime(due_date, '%Y-%m-%dT%H:%M')
+        assignment = Assignment(
+            title=title,
+            description=description,
+            due_date=due_date_dt,
+            created_by=current_user.id,
+            allowed_file_types=allowed_file_types,
+            assignment_filename=assignment_filename,
+            assignment_file_path=assignment_file_path
+        )
+        db.session.add(assignment)
+        db.session.commit()
+        flash('Assignment created successfully!', 'success')
+        return redirect(url_for('teacher_assignments'))
+    return render_template('create_assignment.html')
+
+@app.route('/teacher_assignments')
+@login_required
+def teacher_assignments():
+    if current_user.role != 'teacher':
+        flash('Access denied.', 'error')
+        return redirect(url_for('dashboard'))
+    assignments = Assignment.query.filter_by(created_by=current_user.id).all()
+    return render_template('teacher_assignments.html', assignments=assignments)
+
+@app.route('/student_assignments')
+@login_required
+def student_assignments():
+    if current_user.role != 'student':
+        flash('Access denied.', 'error')
+        return redirect(url_for('dashboard'))
+    assignments = Assignment.query.all()
+    submissions = {s.assignment_id: s for s in AssignmentSubmission.query.filter_by(user_id=current_user.id).all()}
+    return render_template('student_assignments.html', assignments=assignments, submissions=submissions)
+
+ALLOWED_EXTENSIONS = set(['pdf', 'docx', 'txt', 'py', 'java', 'cpp', 'c', 'js'])
+UPLOAD_FOLDER = os.path.join(os.getcwd(), 'assignment_uploads')
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+def allowed_file(filename, allowed_types):
+    ext = filename.rsplit('.', 1)[-1].lower()
+    allowed = [t.strip().lower() for t in allowed_types.split(',')] if allowed_types else list(ALLOWED_EXTENSIONS)
+    return '.' in filename and ext in allowed
+
+@app.route('/api/check_assignment_plagiarism/<int:assignment_id>/<int:submission_id>')
+@login_required
+def api_check_assignment_plagiarism(assignment_id, submission_id):
+    if current_user.role not in ['teacher', 'admin']:
+        return jsonify({'error': 'Unauthorized'}), 403
+    assignment = Assignment.query.get_or_404(assignment_id)
+    current_submission = AssignmentSubmission.query.get_or_404(submission_id)
+    all_submissions = AssignmentSubmission.query.filter_by(assignment_id=assignment_id).all()
+    results = []
+    # Read all files as text (if possible)
+    def read_file_text(path):
+        try:
+            with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                return f.read()
+        except Exception:
+            return ''
+    current_text = read_file_text(current_submission.file_path)
+    for other in all_submissions:
+        if other.id == submission_id:
+            continue
+        other_text = read_file_text(other.file_path)
+        # Use all algorithms/models
+        from utils.plagiarism_detector import PlagiarismDetector
+        detector = PlagiarismDetector()
+        rabin_karp_score = detector.rabin_karp(current_text, other_text)
+        levenshtein_score = detector.levenshtein_distance(current_text, other_text)
+        kmp_score = detector.kmp_search(current_text, other_text)
+        ast_score = None
+        if current_submission.filename.endswith('.py') and other.filename.endswith('.py'):
+            try:
+                ast_score = compare_python_ast(current_text, other_text)
+            except Exception:
+                ast_score = None
+        ml_score = ml_similarity(current_text, other_text)
+        details = {
+            'ml': round(ml_score, 2),
+            'rabin_karp': round(rabin_karp_score, 2),
+            'levenshtein': round(levenshtein_score, 2),
+            'kmp': round(kmp_score, 2),
+            'ast': round(ast_score, 2) if ast_score is not None else None
+        }
+        scores = [s for s in [ml_score, rabin_karp_score, levenshtein_score, kmp_score, ast_score] if s is not None]
+        similarity = sum(scores) / len(scores) if scores else 0
+        if similarity > 30:
+            results.append({
+                'submission1': current_submission.id,
+                'submission2': other.id,
+                'student1_name': User.query.get(current_submission.user_id).username,
+                'student2_name': User.query.get(other.user_id).username,
+                'similarity': round(similarity, 1),
+                'details': details
+            })
+    return jsonify({'results': sorted(results, key=lambda x: x['similarity'], reverse=True)})
+
+@app.route('/submit_assignment/<int:assignment_id>', methods=['GET', 'POST'])
+@login_required
+def submit_assignment(assignment_id):
+    if current_user.role != 'student':
+        flash('Access denied.', 'error')
+        return redirect(url_for('dashboard'))
+    assignment = Assignment.query.get_or_404(assignment_id)
+    if request.method == 'POST':
+        file = request.files['file']
+        if not file:
+            flash('No file uploaded.', 'error')
+            return redirect(request.url)
+        filename = secure_filename(file.filename)
+        if not allowed_file(filename, assignment.allowed_file_types):
+            flash('File type not allowed.', 'error')
+            return redirect(request.url)
+        file_path = os.path.join(UPLOAD_FOLDER, filename)
+        file.save(file_path)
+        submission = AssignmentSubmission(
+            assignment_id=assignment_id,
+            user_id=current_user.id,
+            filename=filename,
+            file_path=file_path
+        )
+        db.session.add(submission)
+        db.session.commit()
+        flash('Assignment submitted successfully!', 'success')
+        return redirect(url_for('student_assignments'))
+    return render_template('submit_assignment.html', assignment=assignment)
+
+@app.route('/review_assignment/<int:assignment_id>')
+@login_required
+def review_assignment(assignment_id):
+    if current_user.role != 'teacher':
+        flash('Access denied.', 'error')
+        return redirect(url_for('dashboard'))
+    assignment = Assignment.query.get_or_404(assignment_id)
+    submissions = AssignmentSubmission.query.filter_by(assignment_id=assignment_id).all()
+    students = {s.user_id: User.query.get(s.user_id) for s in submissions}
+    return render_template('review_assignment.html', assignment=assignment, submissions=submissions, students=students)
+
+@app.route('/view_answer/<int:answer_id>')
+@login_required
+def view_answer(answer_id):
+    if current_user.role != 'teacher':
+        flash('Access denied.', 'error')
+        return redirect(url_for('dashboard'))
+    answer = Answer.query.get_or_404(answer_id)
+    student = User.query.get(answer.user_id)
+    exam = Exam.query.get(answer.exam_id)
+    return render_template('view_answer.html', answer=answer, student=student, exam=exam)
 
 if __name__ == '__main__':
     app.run(debug=True) 
