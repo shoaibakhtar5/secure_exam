@@ -24,7 +24,7 @@
                     <td class="py-6 px-4 align-middle font-bold text-white text-base">{{ assignment.title }}</td>
                     <td class="py-6 px-4 align-middle">
                         {% if assignment.assignment_filename %}
-                            <a href="/{{ assignment.assignment_file_path }}" download class="flex items-center gap-2 underline text-blue-400 hover:text-blue-200">
+                            <a href="{{ url_for('download_assignment_file', filename=assignment.assignment_filename) }}" download class="flex items-center gap-2 underline text-blue-400 hover:text-blue-200">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" /></svg>
                                 {{ assignment.assignment_filename }}
                             </a>
@@ -50,7 +50,20 @@
                         <!-- Plagiarism status or result can go here -->
                     </td>
                     <td class="py-6 px-4 align-middle">
-                        <button type="button" class="btn-neon check-plagiarism-btn px-6 py-3 rounded-lg font-semibold" data-assignment-id="{{ assignment.id }}" data-submission-id="{{ submissions[assignment.id].id if submissions[assignment.id] else 'new' }}">Check Plagiarism</button>
+                        {% if submissions[assignment.id] %}
+                            <span class="text-gray-400">-</span>
+                        {% else %}
+                            <form method="POST" action="{{ url_for('submit_assignment', assignment_id=assignment.id) }}" enctype="multipart/form-data" class="flex items-center space-x-3">
+                                <label class="relative cursor-pointer inline-block">
+                                    <input type="file" name="file" required class="sr-only" onchange="this.nextElementSibling.textContent = this.files[0]?.name || 'Choose file'">
+                                    <span class="block px-4 py-2 rounded-lg bg-gradient-to-r from-gray-900 to-blue-900 border border-blue-500 text-white transition-all file-label shadow-md">Choose file</span>
+                                </label>
+                                <button type="submit" class="btn-neon px-5 py-2 rounded-lg flex items-center gap-2 font-semibold">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" /></svg>
+                                    Upload
+                                </button>
+                            </form>
+                        {% endif %}
                     </td>
                 </tr>
                 {% endfor %}

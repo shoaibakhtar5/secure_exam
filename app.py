@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -1003,7 +1003,7 @@ def submit_assignment(assignment_id):
         return redirect(url_for('student_assignments'))
     return render_template('submit_assignment.html', assignment=assignment)
 
-@app.route('/review_assignment/<int:assignment_id>')
+@app.route('/review_assignment/<int:assignment_id>', methods=['GET', 'POST'])
 @login_required
 def review_assignment(assignment_id):
     if current_user.role != 'teacher':
@@ -1012,6 +1012,21 @@ def review_assignment(assignment_id):
     assignment = Assignment.query.get_or_404(assignment_id)
     submissions = AssignmentSubmission.query.filter_by(assignment_id=assignment_id).all()
     students = {s.user_id: User.query.get(s.user_id) for s in submissions}
+
+    if request.method == 'POST':
+        submission_id = request.form.get('submission_id')
+        marks = request.form.get('marks')
+        comment = request.form.get('comment')
+        submission = AssignmentSubmission.query.get(int(submission_id))
+        if submission:
+            if marks is not None and marks != '':
+                submission.marks = float(marks)
+            if comment is not None:
+                submission.comment = comment
+            db.session.commit()
+            flash('Saved successfully!', 'success')
+        return redirect(url_for('review_assignment', assignment_id=assignment_id))
+
     return render_template('review_assignment.html', assignment=assignment, submissions=submissions, students=students)
 
 @app.route('/view_answer/<int:answer_id>')
@@ -1024,6 +1039,18 @@ def view_answer(answer_id):
     student = User.query.get(answer.user_id)
     exam = Exam.query.get(answer.exam_id)
     return render_template('view_answer.html', answer=answer, student=student, exam=exam)
+
+# For assignment files (teacher uploads)
+@app.route('/assignment_files/<filename>')
+@login_required
+def download_assignment_file(filename):
+    return send_from_directory(ASSIGNMENT_UPLOAD_FOLDER, filename, as_attachment=True)
+
+# For student submissions (student uploads)
+@app.route('/assignment_uploads/<filename>')
+@login_required
+def download_submission_file(filename):
+    return send_from_directory(UPLOAD_FOLDER, filename, as_attachment=True)
 
 if __name__ == '__main__':
     app.run(debug=True) 

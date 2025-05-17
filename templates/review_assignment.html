@@ -24,7 +24,7 @@
                 <tr class="border-b border-gray-800">
                     <td class="py-4">{{ students[submission.user_id].username }}</td>
                     <td class="py-4">
-                        <a href="/{{ submission.file_path }}" download="{{ submission.filename }}" class="flex items-center gap-2 underline text-blue-400 hover:text-blue-200">
+                        <a href="{{ url_for('download_submission_file', filename=submission.filename) }}" download="{{ submission.filename }}" class="flex items-center gap-2 underline text-blue-400 hover:text-blue-200">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
                             </svg>
