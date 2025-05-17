@@ -16,6 +16,11 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from werkzeug.utils import secure_filename
 import mimetypes
+import fitz  # PyMuPDF
+import pytesseract
+from PIL import Image
+import io
+import docx
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
@@ -919,6 +924,48 @@ def allowed_file(filename, allowed_types):
     allowed = [t.strip().lower() for t in allowed_types.split(',')] if allowed_types else list(ALLOWED_EXTENSIONS)
     return '.' in filename and ext in allowed
 
+def extract_text_and_images_from_pdf(pdf_path):
+    doc = fitz.open(pdf_path)
+    all_text = ""
+    all_image_text = ""
+    for page in doc:
+        all_text += page.get_text()
+        for img in page.get_images(full=True):
+            xref = img[0]
+            base_image = doc.extract_image(xref)
+            image_bytes = base_image["image"]
+            image = Image.open(io.BytesIO(image_bytes))
+            ocr_text = pytesseract.image_to_string(image)
+            all_image_text += ocr_text + "\n"
+    return all_text, all_image_text
+
+def extract_text_and_images_from_docx(docx_path):
+    doc = docx.Document(docx_path)
+    all_text = " ".join([p.text for p in doc.paragraphs])
+    all_image_text = ""
+    for rel in doc.part.rels.values():
+        if "image" in rel.target_ref:
+            image_bytes = rel.target_part.blob
+            image = Image.open(io.BytesIO(image_bytes))
+            ocr_text = pytesseract.image_to_string(image)
+            all_image_text += ocr_text + "\n"
+    return all_text, all_image_text
+
+def read_file_text_and_images(path, filename):
+    ext = filename.rsplit('.', 1)[-1].lower()
+    if ext == 'pdf':
+        text, image_text = extract_text_and_images_from_pdf(path)
+        return text + '\n' + image_text
+    elif ext == 'docx':
+        text, image_text = extract_text_and_images_from_docx(path)
+        return text + '\n' + image_text
+    else:
+        try:
+            with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                return f.read()
+        except Exception:
+            return ''
+
 @app.route('/api/check_assignment_plagiarism/<int:assignment_id>/<int:submission_id>')
 @login_required
 def api_check_assignment_plagiarism(assignment_id, submission_id):
@@ -928,18 +975,11 @@ def api_check_assignment_plagiarism(assignment_id, submission_id):
     current_submission = AssignmentSubmission.query.get_or_404(submission_id)
     all_submissions = AssignmentSubmission.query.filter_by(assignment_id=assignment_id).all()
     results = []
-    # Read all files as text (if possible)
-    def read_file_text(path):
-        try:
-            with open(path, 'r', encoding='utf-8', errors='ignore') as f:
-                return f.read()
-        except Exception:
-            return ''
-    current_text = read_file_text(current_submission.file_path)
+    current_text = read_file_text_and_images(current_submission.file_path, current_submission.filename)
     for other in all_submissions:
         if other.id == submission_id:
             continue
-        other_text = read_file_text(other.file_path)
+        other_text = read_file_text_and_images(other.file_path, other.filename)
         # Use all algorithms/models
         from utils.plagiarism_detector import PlagiarismDetector
         detector = PlagiarismDetector()
@@ -954,24 +994,35 @@ def api_check_assignment_plagiarism(assignment_id, submission_id):
                 ast_score = None
         ml_score = ml_similarity(current_text, other_text)
         details = {
-            'ml': round(ml_score, 2),
-            'rabin_karp': round(rabin_karp_score, 2),
-            'levenshtein': round(levenshtein_score, 2),
-            'kmp': round(kmp_score, 2),
-            'ast': round(ast_score, 2) if ast_score is not None else None
+            'ml': {
+                'score': round(ml_score, 2),
+                'message': 'ML is 100% because the content is identical.' if ml_score == 100 else f'ML is {round(ml_score,2)}% because the content is {"very similar" if ml_score > 70 else "somewhat similar" if ml_score > 40 else "not similar"}.'
+            },
+            'rabin_karp': {
+                'score': round(rabin_karp_score, 2),
+                'message': f'Rabin-Karp is {round(rabin_karp_score,2)}%: This algorithm checks for repeated substrings using hashing. A low score does not necessarily mean the files are not similar.'
+            },
+            'levenshtein': {
+                'score': round(levenshtein_score, 2),
+                'message': 'Levenshtein is 100% because the content is identical.' if levenshtein_score == 100 else f'Levenshtein is {round(levenshtein_score,2)}% because the content is {"very similar" if levenshtein_score > 70 else "somewhat similar" if levenshtein_score > 40 else "not similar"}.'
+            },
+            'kmp': {
+                'score': round(kmp_score, 2),
+                'message': f'KMP is {round(kmp_score,2)}%: This algorithm checks for repeated substrings. A low score does not necessarily mean the files are not similar.'
+            },
+            'ast': {
+                'score': round(ast_score, 2) if ast_score is not None else None,
+                'message': 'AST is 100% because the code structure is identical.' if ast_score == 100 else (f'AST is {round(ast_score,2)}% because the code structure is {"very similar" if ast_score and ast_score > 70 else "somewhat similar" if ast_score and ast_score > 40 else "not similar"}' if ast_score is not None else 'N/A')
+            }
         }
-        scores = [s for s in [ml_score, rabin_karp_score, levenshtein_score, kmp_score, ast_score] if s is not None]
-        similarity = sum(scores) / len(scores) if scores else 0
-        if similarity > 30:
-            results.append({
-                'submission1': current_submission.id,
-                'submission2': other.id,
-                'student1_name': User.query.get(current_submission.user_id).username,
-                'student2_name': User.query.get(other.user_id).username,
-                'similarity': round(similarity, 1),
-                'details': details
-            })
-    return jsonify({'results': sorted(results, key=lambda x: x['similarity'], reverse=True)})
+        results.append({
+            'submission1': current_submission.id,
+            'submission2': other.id,
+            'student1_name': User.query.get(current_submission.user_id).username,
+            'student2_name': User.query.get(other.user_id).username,
+            'details': details
+        })
+    return jsonify({'results': results})
 
 @app.route('/submit_assignment/<int:assignment_id>', methods=['GET', 'POST'])
 @login_required
@@ -1051,6 +1102,8 @@ def download_assignment_file(filename):
 @login_required
 def download_submission_file(filename):
     return send_from_directory(UPLOAD_FOLDER, filename, as_attachment=True)
+
+pytesseract.pytesseract.tesseract_cmd = r'C:\\Program Files\\Tesseract-OCR\\tesseract.exe'
 
 if __name__ == '__main__':
     app.run(debug=True) 

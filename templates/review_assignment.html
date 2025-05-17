@@ -56,5 +56,71 @@
         </table>
     </div>
 </div>
-<!-- Plagiarism Modal (reuse modal/JS from exam submissions) -->
+<!-- Plagiarism Modal -->
+<div id="plagiarism-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 hidden">
+    <div class="bg-gray-900 rounded-lg p-8 max-w-2xl w-full relative">
+        <button onclick="closeModal()" class="absolute top-2 right-4 text-gray-400 hover:text-white text-2xl">&times;</button>
+        <h2 class="text-2xl font-bold mb-4" style="color: var(--neon-blue)">Plagiarism Report</h2>
+        <div id="plagiarism-results">
+            <!-- Results will be injected here -->
+        </div>
+    </div>
+</div>
+<script>
+function openPlagiarismModal(assignmentId, submissionId) {
+    document.getElementById('plagiarism-modal').classList.remove('hidden');
+    const resultsDiv = document.getElementById('plagiarism-results');
+    resultsDiv.innerHTML = '<div class="text-gray-400">Loading...</div>';
+    fetch(`/api/check_assignment_plagiarism/${assignmentId}/${submissionId}`)
+        .then(res => {
+            if (!res.ok) {
+                return res.json().then(data => { throw new Error(data.error || 'Error fetching plagiarism results'); });
+            }
+            return res.json();
+        })
+        .then(data => {
+            if (data.results && data.results.length > 0) {
+                let html = `<table class='w-full mb-4'><thead><tr><th class='pb-2'>Compared With</th><th class='pb-2'>Details</th></tr></thead><tbody>`;
+                data.results.forEach(r => {
+                    const other = r.student2_name;
+                    html += `<tr><td class='py-2 align-top'>${other}</td><td class='py-2'>`;
+                    if (r.details) {
+                        html += `<table class='w-full text-xs mt-2'><thead><tr><th class='text-left'>Algorithm</th><th class='text-left'>Score</th><th class='text-left'>Message</th></tr></thead><tbody>`;
+                        Object.entries(r.details).forEach(([algo, obj]) => {
+                            html += `<tr>
+                                <td>${algo.toUpperCase()}</td>
+                                <td>${obj.score !== undefined && obj.score !== null ? obj.score + '%' : 'N/A'}</td>
+                                <td>${obj.message || ''}</td>
+                            </tr>`;
+                        });
+                        html += `</tbody></table>`;
+                    } else {
+                        html += `<span class='text-gray-400'>No details available</span>`;
+                    }
+                    html += `</td></tr>`;
+                });
+                html += '</tbody></table>';
+                resultsDiv.innerHTML = html;
+            } else {
+                resultsDiv.innerHTML = '<div class="text-gray-400">No similar submissions found or only one submission exists for this assignment.</div>';
+            }
+        })
+        .catch(err => {
+            resultsDiv.innerHTML = `<div class='text-red-400'>${err.message || 'Failed to fetch plagiarism results.'}</div>`;
+        });
+}
+function closeModal() {
+    document.getElementById('plagiarism-modal').classList.add('hidden');
+}
+window.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.check-plagiarism-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const assignmentId = this.dataset.assignmentId;
+            const submissionId = this.dataset.submissionId;
+            openPlagiarismModal(assignmentId, submissionId);
+        });
+    });
+});
+</script>
 {% endblock %} 
