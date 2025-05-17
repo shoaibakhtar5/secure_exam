@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block title %}My Results{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+    <!-- Welcome Section -->
+    <div class="glass-bg p-6 rounded-lg">
+        <h1 class="text-3xl font-bold mb-2" style="color: var(--neon-blue)">My Results</h1>
+        <p class="text-gray-400">View your exam results and performance.</p>
+    </div>
+
+    <!-- Results List -->
+    <div class="glass-bg p-6 rounded-lg">
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead>
+                    <tr class="text-left border-b border-gray-700">
+                        <th class="pb-3">Exam Title</th>
+                        <th class="pb-3">Type</th>
+                        <th class="pb-3">Score</th>
+                        <th class="pb-3">Rank</th>
+                        <th class="pb-3">Percentile</th>
+                        <th class="pb-3">Similarity Score</th>
+                        <th class="pb-3">Comment</th>
+                        <th class="pb-3">Submitted At</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for result in results %}
+                    <tr class="border-b border-gray-800">
+                        <td class="py-4">{{ result.exam.title }}</td>
+                        <td class="py-4">{{ result.exam.exam_type }}</td>
+                        <td class="py-4">
+                            {% if result.answer.score is not none %}
+                                <span class="px-2 py-1 rounded-full text-xs 
+                                    {% if result.answer.score >= 0.7 * result.exam.total_marks %}bg-green-500
+                                    {% elif result.answer.score >= 0.4 * result.exam.total_marks %}bg-yellow-500
+                                    {% else %}bg-red-500{% endif %}">
+                                    {{ result.answer.score|int }}/{{ result.exam.total_marks }}
+                                </span>
+                            {% else %}
+                                <span class="px-2 py-1 rounded-full text-xs bg-gray-500">
+                                    Ungraded
+                                </span>
+                            {% endif %}
+                        </td>
+                        <td class="py-4">{{ result.rank }}/{{ result.total_students }}</td>
+                        <td class="py-4">{{ result.percentile }}%</td>
+                        <td class="py-4">
+                            <span class="px-2 py-1 rounded-full text-xs font-bold 
+                                {% if result.answer.similarity_score < 30 %}bg-green-500
+                                {% elif result.answer.similarity_score < 70 %}bg-yellow-500
+                                {% else %}bg-red-500{% endif %}">
+                                Plagiarism: {{ result.answer.similarity_score }}%
+                            </span>
+                        </td>
+                        <td class="py-4">
+                            {% if result.answer.comment %}
+                                <span class="text-sm text-blue-300">{{ result.answer.comment }}</span>
+                            {% else %}
+                                <span class="text-gray-500">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="py-4">{{ result.answer.submitted_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="text-center text-gray-400 py-8">
+                            No results found.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %} 

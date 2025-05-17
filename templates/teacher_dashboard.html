@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+
+{% block title %}Teacher Dashboard{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+    <div class="glass-bg p-6 rounded-lg">
+        <h1 class="text-3xl font-bold mb-2" style="color: var(--neon-blue)">Welcome, {{ current_user.username }}</h1>
+        <p class="text-gray-400">Here's an overview of your exams and submissions</p>
+    </div>
+
+    <!-- Analytics Section -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- Plagiarism Stats -->
+        <div class="glass-bg p-6 rounded-lg">
+            <h2 class="text-2xl font-bold mb-4">Plagiarism Overview</h2>
+            <div class="space-y-4">
+                <div class="flex justify-between items-center">
+                    <span class="text-gray-400">Total Submissions</span>
+                    <span class="text-xl font-semibold">{{ total_submissions }}</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-gray-400">Plagiarized Submissions</span>
+                    <span class="text-xl font-semibold text-red-500">{{ plagiarized_count }}</span>
+                </div>
+                <div class="h-64">
+                    <canvas id="plagiarismChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Top Students with Plagiarism -->
+        <div class="glass-bg p-6 rounded-lg">
+            <h2 class="text-2xl font-bold mb-4">Top Students with Plagiarism</h2>
+            <div class="h-64">
+                <canvas id="topStudentsChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Subject-wise Stats -->
+    <div class="glass-bg p-6 rounded-lg">
+        <h2 class="text-2xl font-bold mb-4">Subject-wise Submission Stats</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="h-64">
+                <canvas id="subjectChart"></canvas>
+            </div>
+            <div class="h-64">
+                <canvas id="timelineChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Submission Timeline -->
+    <div class="glass-bg p-6 rounded-lg">
+        <h2 class="text-2xl font-bold mb-4">Recent Submissions</h2>
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead>
+                    <tr class="text-left border-b border-gray-700">
+                        <th class="pb-3">Student</th>
+                        <th class="pb-3">Exam</th>
+                        <th class="pb-3">Type</th>
+                        <th class="pb-3">Submission Time</th>
+                        <th class="pb-3">Status</th>
+                        <th class="pb-3">Plagiarism Score</th>
+                        <th class="pb-3">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for submission in recent_submissions %}
+                    <tr class="border-b border-gray-800">
+                        <td class="py-4">{{ submission.student_name }}</td>
+                        <td class="py-4">{{ submission.exam_title }}</td>
+                        <td class="py-4">{{ submission.exam_type }}</td>
+                        <td class="py-4">{{ submission.submission_time }}</td>
+                        <td class="py-4">
+                            <span class="px-2 py-1 rounded-full text-sm 
+                                {% if submission.status == 'pending' %}bg-yellow-900 text-yellow-300
+                                {% elif submission.status == 'graded' %}bg-green-900 text-green-300
+                                {% else %}bg-red-900 text-red-300{% endif %}">
+                                {{ submission.status }}
+                            </span>
+                        </td>
+                        <td class="py-4">
+                            {% if submission.plagiarism_score %}
+                            <span class="px-2 py-1 rounded-full text-sm 
+                                {% if submission.plagiarism_score > 70 %}bg-red-900 text-red-300
+                                {% elif submission.plagiarism_score > 30 %}bg-yellow-900 text-yellow-300
+                                {% else %}bg-green-900 text-green-300{% endif %}">
+                                {{ submission.plagiarism_score }}%
+                            </span>
+                            {% else %}
+                            <span class="text-gray-500">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="py-4">
+                            <a href="{{ url_for('view_submission', submission_id=submission.id) }}" 
+                               class="btn-neon px-4 py-2 rounded-lg">View</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- My Exams Section -->
+    <div class="glass-bg p-6 rounded-lg">
+        <h2 class="text-2xl font-bold mb-6">My Exams</h2>
+        <table class="w-full">
+            <thead>
+                <tr class="text-left border-b border-gray-700">
+                    <th class="pb-3">Title</th>
+                    <th class="pb-3">Type</th>
+                    <th class="pb-3">Format</th>
+                    <th class="pb-3">Semester</th>
+                    <th class="pb-3">Section</th>
+                    <th class="pb-3">Department</th>
+                    <th class="pb-3">Start Time</th>
+                    <th class="pb-3">End Time</th>
+                    <th class="pb-3">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for exam in exams %}
+                <tr class="border-b border-gray-800">
+                    <td class="py-4">{{ exam.title }}</td>
+                    <td class="py-4">{{ exam.exam_type }}</td>
+                    <td class="py-4">{{ exam.exam_format }}</td>
+                    <td class="py-4">{{ exam.student_class }}</td>
+                    <td class="py-4">{{ exam.section }}</td>
+                    <td class="py-4">{{ exam.department }}</td>
+                    <td class="py-4">{{ exam.start_time }}</td>
+                    <td class="py-4">{{ exam.end_time }}</td>
+                    <td class="py-4 flex space-x-2">
+                        <a href="{{ url_for('exam_submissions', exam_id=exam.id) }}" class="btn-neon px-4 py-2 rounded-lg">View Submissions</a>
+                        <button type="button" class="btn-neon px-4 py-2 rounded-lg bg-red-700 hover:bg-red-800" onclick="openDeleteModal({{ exam.id }}, '{{ exam.title|escape }}')">Delete</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Delete Exam Modal -->
+<div id="deleteExamModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 hidden">
+    <div class="bg-gray-900 rounded-lg p-8 max-w-md w-full relative">
+        <button onclick="closeDeleteModal()" class="absolute top-2 right-4 text-gray-400 hover:text-white text-2xl">&times;</button>
+        <h2 class="text-2xl font-bold mb-4" style="color: var(--neon-blue)">Delete Exam</h2>
+        <p class="text-gray-300 mb-6">Are you sure you want to delete the exam <span id="deleteExamTitle" class="font-bold"></span>? This will also delete all its questions and submissions. This action cannot be undone.</p>
+        <form id="deleteExamForm" method="POST">
+            <input type="hidden" name="exam_id" id="deleteExamId">
+            <div class="flex justify-end space-x-4">
+                <button type="button" onclick="closeDeleteModal()" class="px-4 py-2 rounded-lg border border-gray-700 hover:border-red-500 transition-all">Cancel</button>
+                <button type="submit" class="btn-neon px-6 py-2 rounded-lg bg-red-700 hover:bg-red-800">Delete</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    // Plagiarism Overview Chart
+    const plagiarismCtx = document.getElementById('plagiarismChart').getContext('2d');
+    new Chart(plagiarismCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Plagiarized', 'Original'],
+            datasets: [{
+                data: [{{ plagiarized_count }}, {{ total_submissions - plagiarized_count }}],
+                backgroundColor: ['#ef4444', '#22c55e']
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false
+        }
+    });
+
+    // Top Students Chart
+    const topStudentsCtx = document.getElementById('topStudentsChart').getContext('2d');
+    new Chart(topStudentsCtx, {
+        type: 'bar',
+        data: {
+            labels: {{ top_students|tojson }},
+            datasets: [{
+                label: 'Plagiarism Score',
+                data: {{ top_students_scores|tojson }},
+                backgroundColor: '#ef4444'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 100
+                }
+            }
+        }
+    });
+
+    // Subject-wise Chart
+    const subjectCtx = document.getElementById('subjectChart').getContext('2d');
+    new Chart(subjectCtx, {
+        type: 'bar',
+        data: {
+            labels: {{ subjects|tojson }},
+            datasets: [{
+                label: 'Submissions',
+                data: {{ subject_submissions|tojson }},
+                backgroundColor: '#3b82f6'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false
+        }
+    });
+
+    // Timeline Chart
+    const timelineCtx = document.getElementById('timelineChart').getContext('2d');
+    new Chart(timelineCtx, {
+        type: 'line',
+        data: {
+            labels: {{ timeline_dates|tojson }},
+            datasets: [{
+                label: 'Submissions',
+                data: {{ timeline_submissions|tojson }},
+                borderColor: '#3b82f6',
+                tension: 0.1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false
+        }
+    });
+
+    function openDeleteModal(examId, examTitle) {
+        document.getElementById('deleteExamModal').classList.remove('hidden');
+        document.getElementById('deleteExamId').value = examId;
+        document.getElementById('deleteExamTitle').textContent = examTitle;
+        document.getElementById('deleteExamForm').action = '/delete_exam/' + examId;
+    }
+    function closeDeleteModal() {
+        document.getElementById('deleteExamModal').classList.add('hidden');
+    }
+</script>
+{% endblock %} 

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}My Exams{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+    <!-- Welcome Section -->
+    <div class="glass-bg p-6 rounded-lg">
+        <h1 class="text-3xl font-bold mb-2" style="color: var(--neon-blue)">My Exams</h1>
+        <p class="text-gray-400">View and take your upcoming exams.</p>
+    </div>
+
+    <!-- Exams List -->
+    <div class="glass-bg p-6 rounded-lg">
+        <div class="space-y-4">
+            {% for exam in exams %}
+            <div class="card neon-border">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h3 class="text-xl font-semibold">{{ exam.title }}</h3>
+                        <p class="text-gray-400">{{ exam.exam_type }} • {{ exam.duration }} minutes</p>
+                        <p class="text-sm text-gray-500">
+                            Scheduled for {{ exam.start_time.strftime('%Y-%m-%d %H:%M') }}
+                        </p>
+                    </div>
+                    {% if exam.status == 'active' %}
+                    <a href="{{ url_for('take_exam', exam_id=exam.id) }}" class="btn-neon">
+                        Start Exam
+                    </a>
+                    {% else %}
+                    <span class="px-4 py-2 rounded-lg bg-gray-800 text-gray-400">
+                        Starts in {{ (exam.start_time - now).total_seconds()|int // 3600 }} hours
+                    </span>
+                    {% endif %}
+                </div>
+            </div>
+            {% else %}
+            <div class="text-center text-gray-400 py-8">
+                <p>No upcoming exams found.</p>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %} 

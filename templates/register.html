@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block title %}Register{% endblock %}
+
+{% block content %}
+<div class="flex min-h-screen items-center justify-center" style="background: linear-gradient(135deg, #0f2027 0%, #2c5364 50%, #6a82fb 100%); min-height: 100vh;">
+    <div class="glass-bg neon-border p-8 w-full max-w-md">
+        <h2 class="text-3xl font-bold mb-6 text-center" style="color: var(--neon-blue)">Create Account</h2>
+        
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="mb-4 p-4 rounded-lg {% if category == 'error' %}bg-red-500{% else %}bg-green-500{% endif %}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        
+        <form id="registerForm" class="space-y-6">
+            <div>
+                <label for="username" class="block text-sm font-medium mb-2">Username</label>
+                <input type="text" 
+                       id="username" 
+                       name="username" 
+                       required 
+                       minlength="3"
+                       class="w-full px-4 py-2 rounded-lg bg-gray-900 border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 transition-all">
+            </div>
+            <div>
+                <label for="enrolment_number" class="block text-sm font-medium mb-2">Enrolment Number</label>
+                <input type="text" 
+                       id="enrolment_number" 
+                       name="enrolment_number" 
+                       required 
+                       class="w-full px-4 py-2 rounded-lg bg-gray-900 border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 transition-all">
+            </div>
+            <div>
+                <label for="password" class="block text-sm font-medium mb-2">Password</label>
+                <input type="password" 
+                       id="password" 
+                       name="password" 
+                       required 
+                       minlength="8"
+                       class="w-full px-4 py-2 rounded-lg bg-gray-900 border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 transition-all">
+            </div>
+            <div>
+                <label for="confirm_password" class="block text-sm font-medium mb-2">Confirm Password</label>
+                <input type="password" 
+                       id="confirm_password" 
+                       name="confirm_password" 
+                       required 
+                       class="w-full px-4 py-2 rounded-lg bg-gray-900 border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 transition-all">
+            </div>
+            <div>
+                <label for="role" class="block text-sm font-medium mb-2">Role</label>
+                <select id="role" 
+                        name="role" 
+                        required 
+                        class="w-full px-4 py-2 rounded-lg bg-gray-900 border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 transition-all">
+                    <option value="student">Student</option>
+                    <option value="teacher">Teacher</option>
+                </select>
+            </div>
+            <div id="studentFields">
+                <div>
+                    <label for="student_semester" class="block text-sm font-medium mb-2">Semester</label>
+                    <input type="text" id="student_semester" name="student_semester" required class="w-full px-4 py-2 rounded-lg bg-gray-900 border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 transition-all">
+                </div>
+                <div>
+                    <label for="section" class="block text-sm font-medium mb-2">Section</label>
+                    <input type="text" id="section" name="section" required class="w-full px-4 py-2 rounded-lg bg-gray-900 border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 transition-all">
+                </div>
+                <div>
+                    <label for="department" class="block text-sm font-medium mb-2">Department</label>
+                    <input type="text" id="department" name="department" required class="w-full px-4 py-2 rounded-lg bg-gray-900 border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 transition-all">
+                </div>
+            </div>
+            <div>
+                <button type="submit" class="w-full btn-neon py-2 px-4 rounded-lg">
+                    Register
+                </button>
+            </div>
+        </form>
+        <div class="mt-6 text-center">
+            <p class="text-gray-400">Already have an account? 
+                <a href="{{ url_for('login') }}" class="text-blue-400 hover:text-blue-300 transition-colors">
+                    Login here
+                </a>
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleStudentFields() {
+    const role = document.getElementById('role').value;
+    const studentFields = document.getElementById('studentFields');
+    const required = (role === 'student');
+    studentFields.style.display = required ? '' : 'none';
+    document.getElementById('student_semester').required = required;
+    document.getElementById('section').required = required;
+    document.getElementById('department').required = required;
+}
+document.getElementById('role').addEventListener('change', toggleStudentFields);
+document.addEventListener('DOMContentLoaded', toggleStudentFields);
+
+document.getElementById('registerForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const password = document.getElementById('password').value;
+    const confirmPassword = document.getElementById('confirm_password').value;
+    
+    if (password !== confirmPassword) {
+        alert('Passwords do not match!');
+        return;
+    }
+    
+    const formData = {
+        username: document.getElementById('username').value,
+        enrolment_number: document.getElementById('enrolment_number').value,
+        password: password,
+        role: document.getElementById('role').value,
+        student_semester: document.getElementById('student_semester').value,
+        section: document.getElementById('section').value,
+        department: document.getElementById('department').value
+    };
+    
+    try {
+        const response = await fetch('{{ url_for("register") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(formData)
+        });
+        
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            window.location.href = '{{ url_for("login") }}';
+        } else {
+            alert(data.message || 'Registration failed. Please try again.');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('An error occurred. Please try again.');
+    }
+});
+</script>
+{% endblock %} 

@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+
+{% block title %}Exam Submissions{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+    <!-- Search/Filter Bar -->
+    <form method="get" class="glass-bg p-4 rounded-lg flex flex-wrap gap-4 items-center mb-4">
+        <input type="text" name="student" value="{{ student_query }}" placeholder="Search student name..." class="px-4 py-2 rounded bg-gray-900 border border-gray-700 focus:border-blue-500">
+        <select name="semester" class="px-4 py-2 rounded bg-gray-900 border border-gray-700 focus:border-blue-500">
+            <option value="">All Semesters</option>
+            {% for s in all_semesters %}
+                <option value="{{ s|lower }}" {% if semester_query == s|lower %}selected{% endif %}>{{ s }}</option>
+            {% endfor %}
+        </select>
+        <select name="section" class="px-4 py-2 rounded bg-gray-900 border border-gray-700 focus:border-blue-500">
+            <option value="">All Sections</option>
+            {% for sec in all_sections %}
+                <option value="{{ sec|lower }}" {% if section_query == sec|lower %}selected{% endif %}>{{ sec }}</option>
+            {% endfor %}
+        </select>
+        <select name="department" class="px-4 py-2 rounded bg-gray-900 border border-gray-700 focus:border-blue-500">
+            <option value="">All Departments</option>
+            {% for d in all_departments %}
+                <option value="{{ d|lower }}" {% if department_query == d|lower %}selected{% endif %}>{{ d }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn-neon">Search</button>
+        {% if student_query or semester_query or section_query or department_query %}
+        <a href="{{ url_for('exam_submissions', exam_id=exam.id) }}" class="ml-2 text-sm text-blue-400 hover:text-blue-200">Clear</a>
+        {% endif %}
+    </form>
+    <!-- Summary Section -->
+    <div class="glass-bg p-6 rounded-lg flex flex-col md:flex-row md:items-center md:justify-between">
+        <div>
+            <h1 class="text-3xl font-bold mb-2" style="color: var(--neon-blue)">Submissions for {{ exam.title }}</h1>
+            <p class="text-gray-400">Review student answers, check for plagiarism, and assign marks.</p>
+        </div>
+        <div class="flex flex-col md:flex-row md:space-x-8 mt-4 md:mt-0">
+            <div class="text-lg"><span class="font-bold">Total Submissions:</span> {{ num_submissions }}</div>
+            <div class="text-lg"><span class="font-bold">Graded:</span> {{ num_graded }}</div>
+            <div class="text-lg"><span class="font-bold">Flagged:</span> <span class="px-2 py-1 rounded-full text-xs {% if num_flagged > 0 %}bg-red-500{% else %}bg-green-500{% endif %}">{{ num_flagged }}</span></div>
+        </div>
+    </div>
+    <div class="glass-bg p-6 rounded-lg">
+        <table class="w-full">
+            <thead>
+                <tr class="text-left border-b border-gray-700">
+                    <th class="pb-3">Student</th>
+                    <th class="pb-3">Answer</th>
+                    <th class="pb-3">Plagiarism</th>
+                    <th class="pb-3">Marks</th>
+                    <th class="pb-3">Status</th>
+                    <th class="pb-3">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for answer in answers %}
+                <tr class="border-b border-gray-800">
+                    <td class="py-4">{{ students[answer.user_id].username }}</td>
+                    <td class="py-4">
+                        <button type="button" class="underline text-blue-400 hover:text-blue-200" onclick="toggleAnswer('answer-{{ answer.id }}')">View</button>
+                        <div id="answer-{{ answer.id }}" class="hidden mt-2 text-gray-300">{{ answer.answer_text }}</div>
+                    </td>
+                    <td class="py-4">
+                        <form method="get" action="#">
+                            <button type="button" class="btn-neon check-plagiarism-btn" data-exam-id="{{ exam.id }}" data-answer-id="{{ answer.id }}">Check Plagiarism</button>
+                        </form>
+                    </td>
+                    <td class="py-4">
+                        <form method="post" action="{{ url_for('exam_submissions', exam_id=exam.id) }}" class="flex flex-col space-y-2">
+                            <input type="hidden" name="answer_id" value="{{ answer.id }}">
+                            <div class="flex items-center space-x-2 mb-2">
+                                <input type="number" name="marks" value="{{ answer.score if answer.score is not none else '' }}" min="0" max="{{ exam.total_marks }}" step="0.01" class="w-20 px-2 py-1 rounded bg-gray-900 border border-gray-700">
+                                <button type="submit" class="btn-neon">Save</button>
+                            </div>
+                            <textarea name="comment" rows="2" placeholder="Add comment..." class="w-full px-2 py-1 rounded bg-gray-900 border border-gray-700">{{ answer.comment or '' }}</textarea>
+                        </form>
+                    </td>
+                    <td class="py-4">
+                        <span class="px-2 py-1 rounded-full text-xs {% if plagiarism_map[answer.id] > 70 %}bg-red-500{% elif plagiarism_map[answer.id] > 40 %}bg-yellow-500{% else %}bg-green-500{% endif %}">
+                            {{ plagiarism_map[answer.id] }}%
+                        </span>
+                    </td>
+                    <td class="py-4">
+                        <!-- Optionally, more actions -->
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" class="text-center text-gray-400 py-8">No submissions found.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Plagiarism Modal -->
+<div id="plagiarism-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 hidden">
+    <div class="bg-gray-900 rounded-lg p-8 max-w-2xl w-full relative">
+        <button onclick="closeModal()" class="absolute top-2 right-4 text-gray-400 hover:text-white text-2xl">&times;</button>
+        <h2 class="text-2xl font-bold mb-4" style="color: var(--neon-blue)">Plagiarism Report</h2>
+        <div id="plagiarism-results">
+            <!-- Results will be injected here -->
+        </div>
+    </div>
+</div>
+
+{% block scripts %}
+<script>
+function openPlagiarismModal(examId, answerId) {
+    document.getElementById('plagiarism-modal').classList.remove('hidden');
+    const resultsDiv = document.getElementById('plagiarism-results');
+    resultsDiv.innerHTML = '<div class="text-gray-400">Loading...</div>';
+    fetch(`/api/check_plagiarism/${examId}/${answerId}`)
+        .then(res => res.json())
+        .then(data => {
+            if (data.results && data.results.length > 0) {
+                let html = `<table class='w-full mb-4'><thead><tr><th class='pb-2'>Compared With</th><th class='pb-2'>Similarity (%)</th><th class='pb-2'>Details</th></tr></thead><tbody>`;
+                data.results.forEach(r => {
+                    const other = r.student1 === answerId ? r.student2_name : r.student1_name;
+                    const sim = r.similarity;
+                    let badge = sim > 70 ? 'High Risk' : sim > 40 ? 'Suspected' : 'No Plagiarism';
+                    let badgeColor = sim > 70 ? 'bg-red-500' : sim > 40 ? 'bg-yellow-500' : 'bg-green-500';
+                    html += `<tr><td class='py-2'>${other}</td><td class='py-2'><span class='px-2 py-1 rounded-full text-xs ${badgeColor}'>${sim}%</span><br><span class='text-xs ${badgeColor} font-bold'>${badge}</span></td><td class='py-2'>`;
+                    if (r.details) {
+                        html += `<div class='space-y-1'>`;
+                        if (r.details.tfidf !== undefined) html += `<div><span class='font-semibold'>TF-IDF:</span> <span class='font-mono'>${r.details.tfidf}%</span> <div class='w-full h-2 bg-gray-800 rounded'><div class='h-2 rounded ${getBarColor(r.details.tfidf)}' style='width:${r.details.tfidf}%;'></div></div></div>`;
+                        if (r.details.rabin_karp !== undefined) html += `<div><span class='font-semibold'>Rabin-Karp:</span> <span class='font-mono'>${r.details.rabin_karp}%</span> <div class='w-full h-2 bg-gray-800 rounded'><div class='h-2 rounded ${getBarColor(r.details.rabin_karp)}' style='width:${r.details.rabin_karp}%;'></div></div></div>`;
+                        if (r.details.levenshtein !== undefined) html += `<div><span class='font-semibold'>Levenshtein:</span> <span class='font-mono'>${r.details.levenshtein}%</span> <div class='w-full h-2 bg-gray-800 rounded'><div class='h-2 rounded ${getBarColor(r.details.levenshtein)}' style='width:${r.details.levenshtein}%;'></div></div></div>`;
+                        if (r.details.kmp !== undefined) html += `<div><span class='font-semibold'>KMP:</span> <span class='font-mono'>${r.details.kmp}%</span> <div class='w-full h-2 bg-gray-800 rounded'><div class='h-2 rounded ${getBarColor(r.details.kmp)}' style='width:${r.details.kmp}%;'></div></div></div>`;
+                        html += `</div>`;
+                    } else {
+                        html += `<span class='text-gray-400'>No details available</span>`;
+                    }
+                    html += `</td></tr>`;
+                });
+                html += '</tbody></table>';
+                html += `<div class='text-sm text-gray-400'>Red: High similarity (&gt; 70%) | Yellow: Suspected (&gt; 40%) | Green: No Plagiarism (&le; 40%)</div>`;
+                resultsDiv.innerHTML = html;
+            } else {
+                resultsDiv.innerHTML = '<div class="text-gray-400">No similar submissions found.</div>';
+            }
+        });
+}
+function getBarColor(score) {
+    if (score > 70) return 'bg-red-500';
+    if (score > 40) return 'bg-yellow-500';
+    return 'bg-green-500';
+}
+function closeModal() {
+    document.getElementById('plagiarism-modal').classList.add('hidden');
+}
+function toggleAnswer(id) {
+    const el = document.getElementById(id);
+    if (el.classList.contains('hidden')) {
+        el.classList.remove('hidden');
+    } else {
+        el.classList.add('hidden');
+    }
+}
+window.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.check-plagiarism-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const examId = this.dataset.examId;
+            const answerId = this.dataset.answerId;
+            openPlagiarismModal(examId, answerId);
+        });
+    });
+});
+</script>
+{% endblock %}
+{% endblock %} 

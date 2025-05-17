@@ -1,0 +1,392 @@
+{% extends "base.html" %}
+
+{% block title %}Create Exam{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <div class="glass-bg p-8 rounded-lg">
+        <h1 class="text-3xl font-bold mb-6" style="color: var(--neon-blue)">Create New Exam</h1>
+        
+        <form method="POST" action="{{ url_for('create_exam') }}" class="space-y-6">
+            <!-- Basic Information -->
+            <div class="space-y-4">
+                <div>
+                    <label for="title" class="block text-sm font-medium mb-2">Exam Title</label>
+                    <input type="text" 
+                           id="title" 
+                           name="title" 
+                           required 
+                           class="w-full px-4 py-2 rounded-lg bg-gray-900 border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 transition-all">
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label for="type" class="block text-sm font-medium mb-2">Exam Type</label>
+                        <select id="type" 
+                                name="type" 
+                                required 
+                                class="w-full px-4 py-2 rounded-lg bg-gray-900 border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 transition-all">
+                            <option value="quiz">Quiz</option>
+                            <option value="midterm">Midterm</option>
+                            <option value="final">Final</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label for="exam_format" class="block text-sm font-medium mb-2">Exam Format</label>
+                        <select id="exam_format" 
+                                name="exam_format" 
+                                required 
+                                onchange="toggleExamFormat()"
+                                class="w-full px-4 py-2 rounded-lg bg-gray-900 border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 transition-all">
+                            <option value="regular">Regular Exam</option>
+                            <option value="coding">Coding Exam</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label for="duration" class="block text-sm font-medium mb-2">Duration (minutes)</label>
+                        <input type="number" 
+                               id="duration" 
+                               name="duration" 
+                               required 
+                               min="5" 
+                               max="180" 
+                               class="w-full px-4 py-2 rounded-lg bg-gray-900 border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 transition-all">
+                    </div>
+                </div>
+
+                <!-- Coding Exam Specific Fields -->
+                <div id="coding-fields" class="hidden space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="programming_language" class="block text-sm font-medium mb-2">Programming Language</label>
+                            <select id="programming_language" 
+                                    name="programming_language" 
+                                    class="w-full px-4 py-2 rounded-lg bg-gray-900 border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 transition-all">
+                                <option value="python">Python</option>
+                                <option value="java">Java</option>
+                                <option value="cpp">C++</option>
+                                <option value="javascript">JavaScript</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="max_file_size" class="block text-sm font-medium mb-2">Max File Size (KB)</label>
+                            <input type="number" 
+                                   id="max_file_size" 
+                                   name="max_file_size" 
+                                   value="100" 
+                                   min="1" 
+                                   class="w-full px-4 py-2 rounded-lg bg-gray-900 border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 transition-all">
+                        </div>
+                    </div>
+                    <div>
+                        <label for="allowed_imports" class="block text-sm font-medium mb-2">Allowed Imports/Libraries</label>
+                        <input type="text" 
+                               id="allowed_imports" 
+                               name="allowed_imports" 
+                               placeholder="e.g., math, numpy, pandas" 
+                               class="w-full px-4 py-2 rounded-lg bg-gray-900 border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 transition-all">
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label for="total_marks" class="block text-sm font-medium mb-2">Total Marks</label>
+                        <input type="number" 
+                               id="total_marks" 
+                               name="total_marks" 
+                               required 
+                               min="10" 
+                               max="100" 
+                               class="w-full px-4 py-2 rounded-lg bg-gray-900 border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 transition-all">
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label for="student_class" class="block text-sm font-medium mb-2">Semester</label>
+                        <input type="text" id="student_class" name="student_class" required class="w-full px-4 py-2 rounded-lg bg-gray-900 border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 transition-all">
+                    </div>
+                    <div>
+                        <label for="section" class="block text-sm font-medium mb-2">Section</label>
+                        <input type="text" id="section" name="section" required class="w-full px-4 py-2 rounded-lg bg-gray-900 border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 transition-all">
+                    </div>
+                    <div>
+                        <label for="department" class="block text-sm font-medium mb-2">Department</label>
+                        <input type="text" id="department" name="department" required class="w-full px-4 py-2 rounded-lg bg-gray-900 border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 transition-all">
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="start_date" class="block text-sm font-medium mb-2">Start Date</label>
+                        <input type="date" 
+                               id="start_date" 
+                               name="start_date" 
+                               required 
+                               class="w-full px-4 py-2 rounded-lg bg-gray-900 border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 transition-all">
+                    </div>
+                    
+                    <div>
+                        <label for="start_time" class="block text-sm font-medium mb-2">Start Time</label>
+                        <input type="time" 
+                               id="start_time" 
+                               name="start_time" 
+                               required 
+                               class="w-full px-4 py-2 rounded-lg bg-gray-900 border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 transition-all">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Questions Section -->
+            <div class="space-y-6">
+                <h2 class="text-xl font-semibold">Questions</h2>
+                <div id="questions-container" class="space-y-6">
+                    <!-- Question template will be cloned here -->
+                </div>
+                
+                <button type="button" 
+                        onclick="addQuestion()" 
+                        class="px-4 py-2 rounded-lg border border-gray-700 hover:border-blue-500 transition-all">
+                    + Add Question
+                </button>
+            </div>
+
+            <!-- Settings -->
+            <div class="space-y-4">
+                <h2 class="text-xl font-semibold">Settings</h2>
+                
+                <div class="flex items-center space-x-4">
+                    <div class="flex items-center">
+                        <input type="checkbox" 
+                               id="randomize_questions" 
+                               name="randomize_questions" 
+                               class="w-4 h-4 rounded border-gray-700 bg-gray-900 text-blue-500 focus:ring-blue-500">
+                        <label for="randomize_questions" class="ml-2 text-sm">Randomize Questions</label>
+                    </div>
+                    
+                    <div class="flex items-center">
+                        <input type="checkbox" 
+                               id="show_results_immediately" 
+                               name="show_results_immediately" 
+                               class="w-4 h-4 rounded border-gray-700 bg-gray-900 text-blue-500 focus:ring-blue-500">
+                        <label for="show_results_immediately" class="ml-2 text-sm">Show Results Immediately</label>
+                    </div>
+                </div>
+                
+                <div>
+                    <label for="passing_score" class="block text-sm font-medium mb-2">Passing Score (%)</label>
+                    <input type="number" 
+                           id="passing_score" 
+                           name="passing_score" 
+                           required 
+                           min="0" 
+                           max="100" 
+                           value="40" 
+                           class="w-32 px-4 py-2 rounded-lg bg-gray-900 border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 transition-all">
+                </div>
+            </div>
+
+            <div class="flex justify-end space-x-4">
+                <a href="{{ url_for('dashboard') }}" class="px-6 py-2 rounded-lg border border-gray-700 hover:border-red-500 transition-all">
+                    Cancel
+                </a>
+                <button type="submit" class="btn-neon px-6 py-2 rounded-lg">
+                    Create Exam
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Question Template (Hidden) -->
+<template id="question-template">
+    <div class="question-item glass-bg p-6 rounded-lg">
+        <div class="flex justify-between items-start mb-4">
+            <h3 class="text-lg font-semibold">Question <span class="question-number"></span></h3>
+            <button type="button" 
+                    onclick="removeQuestion(this)" 
+                    class="text-red-500 hover:text-red-400">
+                Remove
+            </button>
+        </div>
+        
+        <div class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium mb-2">Question Text</label>
+                <textarea name="questions[][text]" 
+                          required 
+                          rows="3" 
+                          class="w-full px-4 py-2 rounded-lg bg-gray-900 border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 transition-all"></textarea>
+            </div>
+            
+            <div>
+                <label class="block text-sm font-medium mb-2">Question Type</label>
+                <select name="questions[][type]" 
+                        required 
+                        onchange="toggleAnswerType(this)" 
+                        class="w-full px-4 py-2 rounded-lg bg-gray-900 border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 transition-all">
+                    <option value="multiple_choice">Multiple Choice</option>
+                    <option value="short_answer">Short Answer</option>
+                    <option value="long_answer">Long Answer</option>
+                    <option value="coding" class="coding-option hidden">Coding Question</option>
+                </select>
+            </div>
+            
+            <div class="answer-options space-y-2">
+                <!-- For Multiple Choice -->
+                <div class="multiple-choice-options">
+                    <div class="space-y-2">
+                        <div class="flex items-center space-x-2">
+                            <input type="radio" 
+                                   name="questions[][correct]" 
+                                   value="0" 
+                                   required>
+                            <input type="text" 
+                                   name="questions[][options][]" 
+                                   placeholder="Option 1" 
+                                   required 
+                                   class="w-full px-4 py-2 rounded-lg bg-gray-900 border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 transition-all">
+                        </div>
+                    </div>
+                    <button type="button" 
+                            onclick="addOption(this)" 
+                            class="mt-2 text-sm text-blue-500 hover:text-blue-400">
+                        + Add Option
+                    </button>
+                </div>
+                
+                <!-- For Short/Long Answer -->
+                <div class="text-answer hidden">
+                    <textarea name="questions[][answer]" 
+                              rows="2" 
+                              placeholder="Correct Answer" 
+                              class="w-full px-4 py-2 rounded-lg bg-gray-900 border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 transition-all"></textarea>
+                </div>
+
+                <!-- For Coding Questions -->
+                <div class="coding-answer hidden">
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium mb-2">Test Cases</label>
+                            <textarea name="questions[][test_cases]" 
+                                      rows="3" 
+                                      placeholder="Enter test cases (one per line)" 
+                                      class="w-full px-4 py-2 rounded-lg bg-gray-900 border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 transition-all"></textarea>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium mb-2">Expected Output</label>
+                            <textarea name="questions[][expected_output]" 
+                                      rows="3" 
+                                      placeholder="Enter expected output for each test case" 
+                                      class="w-full px-4 py-2 rounded-lg bg-gray-900 border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 transition-all"></textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div>
+                <label class="block text-sm font-medium mb-2">Marks</label>
+                <input type="number" 
+                       name="questions[][marks]" 
+                       required 
+                       min="1" 
+                       value="1" 
+                       class="w-24 px-4 py-2 rounded-lg bg-gray-900 border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 transition-all">
+            </div>
+        </div>
+    </div>
+</template>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function toggleExamFormat() {
+        const examFormat = document.getElementById('exam_format').value;
+        const codingFields = document.getElementById('coding-fields');
+        const codingOptions = document.querySelectorAll('.coding-option');
+        
+        if (examFormat === 'coding') {
+            codingFields.classList.remove('hidden');
+            codingOptions.forEach(option => option.classList.remove('hidden'));
+        } else {
+            codingFields.classList.add('hidden');
+            codingOptions.forEach(option => option.classList.add('hidden'));
+        }
+    }
+
+    function toggleAnswerType(select) {
+        const questionItem = select.closest('.question-item');
+        const multipleChoice = questionItem.querySelector('.multiple-choice-options');
+        const textAnswer = questionItem.querySelector('.text-answer');
+        const codingAnswer = questionItem.querySelector('.coding-answer');
+        
+        multipleChoice.classList.add('hidden');
+        textAnswer.classList.add('hidden');
+        codingAnswer.classList.add('hidden');
+        
+        if (select.value === 'multiple_choice') {
+            multipleChoice.classList.remove('hidden');
+        } else if (select.value === 'coding') {
+            codingAnswer.classList.remove('hidden');
+        } else {
+            textAnswer.classList.remove('hidden');
+        }
+    }
+
+    function addQuestion() {
+        const container = document.getElementById('questions-container');
+        const template = document.getElementById('question-template');
+        const clone = template.content.cloneNode(true);
+
+        // Update question number
+        const questionIndex = container.children.length;
+        clone.querySelector('.question-number').textContent = questionIndex + 1;
+
+        // Update name attributes to include question index
+        clone.querySelectorAll('[name]').forEach(element => {
+            element.name = element.name.replace('questions[][', `questions[${questionIndex}][`);
+        });
+
+        container.appendChild(clone);
+    }
+    
+    function removeQuestion(button) {
+        const questionItem = button.closest('.question-item');
+        questionItem.remove();
+        
+        // Update remaining question numbers
+        document.querySelectorAll('.question-number').forEach((span, index) => {
+            span.textContent = index + 1;
+        });
+    }
+    
+    function addOption(button) {
+        const optionsContainer = button.previousElementSibling;
+        const optionCount = optionsContainer.children.length + 1;
+        
+        const optionDiv = document.createElement('div');
+        optionDiv.className = 'flex items-center space-x-2';
+        optionDiv.innerHTML = `
+            <input type="radio" 
+                   name="${button.closest('.question-item').querySelector('input[type="radio"]').name}" 
+                   value="${optionCount-1}" 
+                   required>
+            <input type="text" 
+                   name="${button.closest('.question-item').querySelector('input[type="text"]').name}" 
+                   placeholder="Option ${optionCount}" 
+                   required 
+                   class="w-full px-4 py-2 rounded-lg bg-gray-900 border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 transition-all">
+        `;
+        
+        optionsContainer.appendChild(optionDiv);
+    }
+    
+    // Add first question on page load
+    document.addEventListener('DOMContentLoaded', () => {
+        addQuestion();
+    });
+</script>
+{% endblock %} 

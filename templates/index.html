@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}Welcome to SecureExams{% endblock %}
+
+{% block content %}
+<div class="min-h-screen flex flex-col items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+    <!-- Hero Section -->
+    <div class="text-center mb-12">
+        <h1 class="text-4xl md:text-6xl font-bold mb-4" style="color: var(--neon-blue)">
+            Welcome to SecureExams
+        </h1>
+        <p class="text-xl text-gray-400 max-w-2xl mx-auto">
+            A secure and intelligent examination platform with advanced plagiarism detection and real-time analytics.
+        </p>
+    </div>
+
+    <!-- Features Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl w-full mb-12">
+        <div class="card neon-border">
+            <div class="text-center">
+                <h3 class="text-xl font-semibold mb-2">Secure Testing</h3>
+                <p class="text-gray-400">Advanced security measures to ensure fair and honest examinations.</p>
+            </div>
+        </div>
+        <div class="card neon-border">
+            <div class="text-center">
+                <h3 class="text-xl font-semibold mb-2">Plagiarism Detection</h3>
+                <p class="text-gray-400">State-of-the-art algorithms to detect and prevent academic dishonesty.</p>
+            </div>
+        </div>
+        <div class="card neon-border">
+            <div class="text-center">
+                <h3 class="text-xl font-semibold mb-2">Real-time Analytics</h3>
+                <p class="text-gray-400">Comprehensive performance tracking and detailed analytics.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Call to Action -->
+    <div class="text-center">
+        {% if session.get('username') %}
+            <a href="{{ url_for('dashboard') }}" class="btn-neon text-lg px-8 py-3">
+                Go to Dashboard
+            </a>
+        {% else %}
+            <div class="space-x-4">
+                <a href="{{ url_for('login') }}" class="btn-neon text-lg px-8 py-3">
+                    Login
+                </a>
+                <a href="{{ url_for('register') }}" class="btn-neon text-lg px-8 py-3">
+                    Register
+                </a>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %} 
