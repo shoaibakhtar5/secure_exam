@@ -127,22 +127,24 @@
                         </div>
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-400 mb-2">Your Code</label>
-                        <div class="relative">
-                            <textarea name="answers[{{ question.id }}]" 
-                                      id="code{{ question.id }}" 
-                                      rows="10" 
-                                      required 
-                                      class="w-full px-4 py-2 rounded-lg bg-gray-900 border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 transition-all font-mono"
-                                      data-language="{{ exam.programming_language }}"></textarea>
+                        <label class="block text-lg font-bold text-blue-400 mb-2">Write Your Code Below:</label>
+                        <p class="text-sm text-gray-400 mb-2">Type your code in the editor below. You can run test cases and submit your answer when ready.</p>
+                        <div class="relative border-2 border-blue-400 rounded-lg mb-2" style="min-height: 300px;">
+                            <!-- Ace Editor Div -->
+                            <div id="ace_code{{ question.id }}" class="w-full h-72 rounded-lg" style="background: #1a1a1a; font-size: 1rem;"></div>
+                            <!-- Hidden textarea for form submission -->
+                            <textarea name="answers[{{ question.id }}]"
+                                      id="code{{ question.id }}"
+                                      class="hidden"></textarea>
                             <div class="absolute top-2 right-2">
-                                <button type="button" 
-                                        onclick="formatCode({{ question.id }})" 
+                                <button type="button"
+                                        onclick="formatCode({{ question.id }})"
                                         class="px-3 py-1 rounded-lg bg-gray-800 text-gray-400 hover:bg-gray-700 transition-all text-sm">
                                     Format
                                 </button>
                             </div>
                         </div>
+                        <div id="aceWarning{{ question.id }}" class="text-red-500 text-sm hidden">Code editor failed to load. Please refresh the page.</div>
                     </div>
                     <div id="testResults{{ question.id }}" class="hidden">
                         <h4 class="text-sm font-medium text-gray-400 mb-2">Test Results:</h4>
@@ -201,7 +203,7 @@
     const editors = {};
     {% for question in questions %}
     {% if question.type == 'coding' %}
-    editors[{{ question.id }}] = ace.edit("code{{ question.id }}");
+    editors[{{ question.id }}] = ace.edit("ace_code{{ question.id }}");
     editors[{{ question.id }}].setTheme("ace/theme/monokai");
     editors[{{ question.id }}].session.setMode("ace/mode/{{ exam.programming_language }}");
     editors[{{ question.id }}].setOptions({
@@ -289,24 +291,42 @@
 
     // Submit exam
     function confirmSubmit() {
-        document.getElementById('submitModal').classList.remove('hidden');
-        document.getElementById('submitModal').classList.add('flex');
+        const modal = document.getElementById('submitModal');
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        modal.style.display = 'flex'; // Ensure modal is visible
     }
 
     function closeSubmitModal() {
-        document.getElementById('submitModal').classList.add('hidden');
-        document.getElementById('submitModal').classList.remove('flex');
+        const modal = document.getElementById('submitModal');
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        modal.style.display = 'none'; // Ensure modal is hidden
     }
 
     function submitExam() {
+        console.log('submitExam called');
         // Get code from editors
-        {% for question in questions %}
-        {% if question.type == 'coding' %}
-        document.getElementById('code{{ question.id }}').value = editors[{{ question.id }}].getValue();
-        {% endif %}
-        {% endfor %}
-        
+        if (typeof editors !== 'undefined') {
+            for (const key in editors) {
+                if (editors.hasOwnProperty(key)) {
+                    const textarea = document.getElementById('code' + key);
+                    if (textarea) textarea.value = editors[key].getValue();
+                }
+            }
+        }
+        // Hide modal before submitting
+        closeSubmitModal();
+        // Submit the form
         document.getElementById('examForm').submit();
     }
+
+    // Ensure global scope for modal submit
+    window.submitExam = submitExam;
+    window.confirmSubmit = confirmSubmit;
+    window.closeSubmitModal = closeSubmitModal;
+    // Debug test button
+    window.testCall = function() { alert('Test function called!'); };
 </script>
+<button onclick="testCall()" style="position:fixed;bottom:10px;right:10px;z-index:9999;">Test JS Call</button>
 {% endblock %} 

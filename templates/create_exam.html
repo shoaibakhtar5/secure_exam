@@ -322,17 +322,34 @@
         const multipleChoice = questionItem.querySelector('.multiple-choice-options');
         const textAnswer = questionItem.querySelector('.text-answer');
         const codingAnswer = questionItem.querySelector('.coding-answer');
-        
+
+        // Hide all
         multipleChoice.classList.add('hidden');
         textAnswer.classList.add('hidden');
         codingAnswer.classList.add('hidden');
-        
+
+        // Remove required from all possible inputs in this question
+        questionItem.querySelectorAll('input, textarea, select').forEach(el => {
+            el.required = false;
+        });
+
+        // Show and set required only for the selected type
         if (select.value === 'multiple_choice') {
             multipleChoice.classList.remove('hidden');
+            // Set required for visible MCQ fields
+            multipleChoice.querySelectorAll('input[type="radio"], input[type="text"]').forEach(el => {
+                el.required = true;
+            });
         } else if (select.value === 'coding') {
             codingAnswer.classList.remove('hidden');
+            codingAnswer.querySelectorAll('textarea').forEach(el => {
+                el.required = true;
+            });
         } else {
             textAnswer.classList.remove('hidden');
+            textAnswer.querySelectorAll('textarea').forEach(el => {
+                el.required = true;
+            });
         }
     }
 
@@ -365,22 +382,23 @@
     
     function addOption(button) {
         const optionsContainer = button.previousElementSibling;
+        const questionItem = button.closest('.question-item');
+        // Find the question index from the first textarea/select name
+        let index = 0;
+        const firstNamed = questionItem.querySelector('[name^="questions["]');
+        if (firstNamed) {
+            const match = firstNamed.name.match(/questions\[(\d+)\]/);
+            if (match) index = match[1];
+        }
         const optionCount = optionsContainer.children.length + 1;
-        
+        const radioName = `questions[${index}][correct]`;
+        const textName = `questions[${index}][options][]`;
         const optionDiv = document.createElement('div');
         optionDiv.className = 'flex items-center space-x-2';
         optionDiv.innerHTML = `
-            <input type="radio" 
-                   name="${button.closest('.question-item').querySelector('input[type="radio"]').name}" 
-                   value="${optionCount-1}" 
-                   required>
-            <input type="text" 
-                   name="${button.closest('.question-item').querySelector('input[type="text"]').name}" 
-                   placeholder="Option ${optionCount}" 
-                   required 
-                   class="w-full px-4 py-2 rounded-lg bg-gray-900 border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 transition-all">
+            <input type="radio" name="${radioName}" value="${optionCount-1}" required>
+            <input type="text" name="${textName}" placeholder="Option ${optionCount}" required class="w-full px-4 py-2 rounded-lg bg-gray-900 border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 transition-all">
         `;
-        
         optionsContainer.appendChild(optionDiv);
     }
     

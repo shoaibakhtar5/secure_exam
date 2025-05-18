@@ -6,14 +6,28 @@
         <h1 class="text-2xl font-bold mb-4" style="color: var(--neon-blue)">Submit Assignment</h1>
         <h2 class="text-lg font-semibold mb-2">{{ assignment.title }}</h2>
         <p class="text-gray-400 mb-4">Due: {{ assignment.due_date.strftime('%Y-%m-%d %H:%M') }}</p>
-        <form method="POST" enctype="multipart/form-data">
+        {% if existing_submission %}
+            <div class="mb-4">
+                <label class="block text-sm font-medium mb-2">Your Uploaded File</label>
+                <a href="{{ url_for('download_submission_file', filename=existing_submission.filename) }}" class="underline text-blue-400 hover:text-blue-200">{{ existing_submission.filename }}</a>
+                {% if now <= assignment.due_date %}
+                <form method="POST" action="{{ url_for('delete_submission', submission_id=existing_submission.id) }}" style="display:inline;">
+                    <button type="submit" class="ml-4 px-3 py-1 rounded-lg bg-red-700 text-white hover:bg-red-800">Delete</button>
+                </form>
+                {% endif %}
+            </div>
+        {% endif %}
+        <form method="POST" enctype="multipart/form-data" {% if now > assignment.due_date %}onsubmit="return false;"{% endif %}>
             <div class="mb-4">
                 <label class="block text-sm font-medium mb-2">Upload File</label>
-                <input type="file" name="file" required class="w-full px-4 py-2 rounded-lg bg-gray-900 border border-gray-700">
+                <input type="file" name="file" {% if now > assignment.due_date %}disabled{% endif %} class="w-full px-4 py-2 rounded-lg bg-gray-900 border border-gray-700">
             </div>
             <div class="flex justify-end">
-                <button type="submit" class="btn-neon px-6 py-2 rounded-lg">Submit</button>
+                <button type="submit" class="btn-neon px-6 py-2 rounded-lg" {% if now > assignment.due_date %}disabled{% endif %}>Submit</button>
             </div>
+            {% if now > assignment.due_date %}
+            <div class="text-red-400 mt-2">Submission is closed (past due date).</div>
+            {% endif %}
         </form>
     </div>
 </div>

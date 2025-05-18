@@ -118,7 +118,7 @@ function openPlagiarismModal(examId, answerId) {
             if (data.results && data.results.length > 0) {
                 let html = `<table class='w-full mb-4'><thead><tr><th class='pb-2'>Compared With</th><th class='pb-2'>Similarity (%)</th><th class='pb-2'>Details</th></tr></thead><tbody>`;
                 data.results.forEach(r => {
-                    const other = r.student1 === answerId ? r.student2_name : r.student1_name;
+                    const other = r.student2_name;
                     const sim = r.similarity;
                     let badge = sim > 70 ? 'High Risk' : sim > 40 ? 'Suspected' : 'No Plagiarism';
                     let badgeColor = sim > 70 ? 'bg-red-500' : sim > 40 ? 'bg-yellow-500' : 'bg-green-500';

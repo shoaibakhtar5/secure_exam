@@ -102,7 +102,7 @@ function openPlagiarismModal(assignmentId, submissionId) {
                 html += '</tbody></table>';
                 resultsDiv.innerHTML = html;
             } else {
-                resultsDiv.innerHTML = '<div class="text-gray-400">No similar submissions found or only one submission exists for this assignment.</div>';
+                resultsDiv.innerHTML = '<div class="text-gray-400">No high similarity found (no student with &gt; 70% on any algorithm).</div>';
             }
         })
         .catch(err => {

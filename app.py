@@ -104,6 +104,9 @@ class Assignment(db.Model):
     allowed_file_types = db.Column(db.String(200))
     assignment_filename = db.Column(db.String(255))
     assignment_file_path = db.Column(db.String(255))
+    student_class = db.Column(db.String(50))
+    section = db.Column(db.String(10))
+    department = db.Column(db.String(100))
 
 class AssignmentSubmission(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -116,6 +119,28 @@ class AssignmentSubmission(db.Model):
     comment = db.Column(db.Text)
     similarity_score = db.Column(db.Float)
     status = db.Column(db.String(20), default='pending')
+
+class PlagiarismResult(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    exam_id = db.Column(db.Integer, db.ForeignKey('exam.id'), nullable=False)
+    answer1_id = db.Column(db.Integer, db.ForeignKey('answer.id'), nullable=False)
+    answer2_id = db.Column(db.Integer, db.ForeignKey('answer.id'), nullable=False)
+    similarity = db.Column(db.Float, nullable=False)
+    details = db.Column(db.Text)  # JSON string with algorithm details
+    __table_args__ = (
+        db.UniqueConstraint('exam_id', 'answer1_id', 'answer2_id', name='uq_exam_answer_pair'),
+    )
+
+class AssignmentPlagiarismResult(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    assignment_id = db.Column(db.Integer, db.ForeignKey('assignment.id'), nullable=False)
+    submission1_id = db.Column(db.Integer, db.ForeignKey('assignment_submission.id'), nullable=False)
+    submission2_id = db.Column(db.Integer, db.ForeignKey('assignment_submission.id'), nullable=False)
+    similarity = db.Column(db.Float, nullable=False)
+    details = db.Column(db.Text)  # JSON string with algorithm details
+    __table_args__ = (
+        db.UniqueConstraint('assignment_id', 'submission1_id', 'submission2_id', name='uq_assignment_submission_pair'),
+    )
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -528,6 +553,66 @@ def take_exam(exam_id):
         answer.similarity_score = 0.0
         db.session.add(answer)
         db.session.commit()
+
+        # --- Plagiarism precompute and cache ---
+        from utils.plagiarism_detector import AdvancedPlagiarismChecker, PlagiarismDetector
+        exam_answers = Answer.query.filter_by(exam_id=exam_id).all()
+        submissions = [(a.id, a.answer_text) for a in exam_answers]
+        exam_obj = Exam.query.get(exam_id)
+        if exam_obj.exam_format == 'coding':
+            # Coding: pairwise, multi-algo
+            for i, a1 in enumerate(exam_answers):
+                for j, a2 in enumerate(exam_answers):
+                    if i >= j:
+                        continue
+                    detector = PlagiarismDetector()
+                    rabin_karp_score = detector.rabin_karp(a1.answer_text, a2.answer_text)
+                    levenshtein_score = detector.levenshtein_distance(a1.answer_text, a2.answer_text)
+                    kmp_score = detector.kmp_search(a1.answer_text, a2.answer_text)
+                    ast_score = None
+                    if exam_obj.programming_language and exam_obj.programming_language.lower() == 'python':
+                        try:
+                            from app import compare_python_ast
+                            ast_score = compare_python_ast(a1.answer_text, a2.answer_text)
+                        except Exception:
+                            ast_score = None
+                    from app import ml_similarity
+                    ml_score = ml_similarity(a1.answer_text, a2.answer_text)
+                    details = json.dumps({
+                        'ml': round(ml_score, 2),
+                        'rabin_karp': round(rabin_karp_score, 2),
+                        'levenshtein': round(levenshtein_score, 2),
+                        'kmp': round(kmp_score, 2),
+                        'ast': round(ast_score, 2) if ast_score is not None else None
+                    })
+                    similarity = sum([s for s in [ml_score, rabin_karp_score, levenshtein_score, kmp_score, ast_score] if s is not None]) / len([s for s in [ml_score, rabin_karp_score, levenshtein_score, kmp_score, ast_score] if s is not None])
+                    # Upsert
+                    for pair in [(a1.id, a2.id), (a2.id, a1.id)]:
+                        pr = PlagiarismResult.query.filter_by(exam_id=exam_id, answer1_id=pair[0], answer2_id=pair[1]).first()
+                        if not pr:
+                            pr = PlagiarismResult(exam_id=exam_id, answer1_id=pair[0], answer2_id=pair[1], similarity=similarity, details=details)
+                            db.session.add(pr)
+                        else:
+                            pr.similarity = similarity
+                            pr.details = details
+            db.session.commit()
+        else:
+            # Regular: TF-IDF/cosine
+            checker = AdvancedPlagiarismChecker()
+            plagiarism_results = checker.check_all(submissions)
+            for r in plagiarism_results:
+                details = json.dumps({'tfidf': round(r['similarity'], 2)})
+                for pair in [(r['student1'], r['student2']), (r['student2'], r['student1'])]:
+                    pr = PlagiarismResult.query.filter_by(exam_id=exam_id, answer1_id=pair[0], answer2_id=pair[1]).first()
+                    if not pr:
+                        pr = PlagiarismResult(exam_id=exam_id, answer1_id=pair[0], answer2_id=pair[1], similarity=r['similarity'], details=details)
+                        db.session.add(pr)
+                    else:
+                        pr.similarity = r['similarity']
+                        pr.details = details
+            db.session.commit()
+        # --- End plagiarism precompute ---
+
         flash('Exam submitted successfully!', 'success')
         return redirect(url_for('my_results'))
     return render_template('take_exam.html', exam=exam, questions=questions)
@@ -620,79 +705,43 @@ def check_code_similarity(code1, code2):
 def api_check_plagiarism(exam_id, answer_id):
     if current_user.role not in ['teacher', 'admin']:
         return jsonify({'error': 'Unauthorized'}), 403
-    
     exam = Exam.query.get_or_404(exam_id)
     current_answer = Answer.query.get_or_404(answer_id)
+    # Fetch cached results from PlagiarismResult
     results = []
-    if exam.exam_format == 'coding':
-        # For coding exams, compare with all other submissions
-        other_answers = Answer.query.filter(
-            Answer.exam_id == exam_id,
-            Answer.id != answer_id
-        ).all()
-        for other in other_answers:
-            # Multi-algorithm comparison
-            details = {}
-            from utils.plagiarism_detector import PlagiarismDetector
-            detector = PlagiarismDetector()
-            rabin_karp_score = detector.rabin_karp(current_answer.answer_text, other.answer_text)
-            levenshtein_score = detector.levenshtein_distance(current_answer.answer_text, other.answer_text)
-            kmp_score = detector.kmp_search(current_answer.answer_text, other.answer_text)
-            # AST-based comparison for Python
-            ast_score = None
-            if exam.programming_language and exam.programming_language.lower() == 'python':
-                try:
-                    ast_score = compare_python_ast(current_answer.answer_text, other.answer_text)
-                except Exception:
-                    ast_score = None
-            # ML-based similarity (TF-IDF + cosine)
-            ml_score = ml_similarity(current_answer.answer_text, other.answer_text)
-            details = {
-                'ml': round(ml_score, 2),
-                'rabin_karp': round(rabin_karp_score, 2),
-                'levenshtein': round(levenshtein_score, 2),
-                'kmp': round(kmp_score, 2),
-                'ast': round(ast_score, 2) if ast_score is not None else None
-            }
-            # Aggregate score (weighted)
-            scores = [s for s in [ml_score, rabin_karp_score, levenshtein_score, kmp_score, ast_score] if s is not None]
-            similarity = sum(scores) / len(scores) if scores else 0
-            if similarity > 30:
-                results.append({
-                    'student1': current_answer.id,
-                    'student2': other.id,
-                    'student1_name': User.query.get(current_answer.user_id).username,
-                    'student2_name': User.query.get(other.user_id).username,
-                    'similarity': round(similarity, 1),
-                    'details': details
-                })
-    else:
-        # For regular exams, use AdvancedPlagiarismChecker
-        from utils.plagiarism_detector import AdvancedPlagiarismChecker
-        answers = Answer.query.filter(Answer.exam_id == exam_id).all()
-        students = {a.id: User.query.get(a.user_id).username for a in answers}
-        submissions = [(a.id, a.answer_text) for a in answers]
-        checker = AdvancedPlagiarismChecker()
-        plagiarism_results = checker.check_all(submissions)
-        for r in plagiarism_results:
-            if (r['student1'] == answer_id or r['student2'] == answer_id) and r['similarity'] > 30:
-                ml_score = ml_similarity(
-                    next((s[1] for s in submissions if s[0] == r['student1']), ''),
-                    next((s[1] for s in submissions if s[0] == r['student2']), '')
-                )
-                details = {
-                    'ml': round(ml_score, 2),
-                    'tfidf': round(r['similarity'], 2)
-                }
-                results.append({
-                    'student1': r['student1'],
-                    'student2': r['student2'],
-                    'student1_name': students.get(r['student1'], 'Unknown'),
-                    'student2_name': students.get(r['student2'], 'Unknown'),
-                    'similarity': r['similarity'],
-                    'details': details
-                })
-    return jsonify({'results': sorted(results, key=lambda x: x['similarity'], reverse=True)})
+    prs = PlagiarismResult.query.filter_by(exam_id=exam_id, answer1_id=answer_id).all()
+    for pr in prs:
+        other = Answer.query.get(pr.answer2_id)
+        if not other or other.id == answer_id:
+            continue
+        details = json.loads(pr.details) if pr.details else {}
+        # For coding: details may have multiple algorithms; for regular: only tfidf
+        # For compatibility with frontend, wrap details if needed
+        if exam.exam_format == 'coding':
+            sim = pr.similarity
+            badge = sim > 70 and 'High Risk' or sim > 40 and 'Suspected' or 'No Plagiarism'
+        else:
+            sim = details.get('tfidf', pr.similarity)
+            badge = sim > 70 and 'High Risk' or sim > 40 and 'Suspected' or 'No Plagiarism'
+        results.append({
+            'student1': answer_id,
+            'student2': other.id,
+            'student1_name': User.query.get(current_answer.user_id).username,
+            'student2_name': User.query.get(other.user_id).username,
+            'similarity': round(sim, 1),
+            'details': details
+        })
+    # Only include results where at least one algorithm score is > 30 (to match old logic)
+    filtered_results = []
+    for r in results:
+        details = r['details']
+        if exam.exam_format == 'coding':
+            if any((isinstance(obj, (int, float)) and obj > 30) for obj in details.values()):
+                filtered_results.append(r)
+        else:
+            if details.get('tfidf', r['similarity']) > 30:
+                filtered_results.append(r)
+    return jsonify({'results': filtered_results})
 
 def compare_python_ast(code1, code2):
     try:
@@ -881,6 +930,9 @@ def create_assignment():
             assignment_file_path = os.path.join(ASSIGNMENT_UPLOAD_FOLDER, assignment_filename)
             file.save(assignment_file_path)
         due_date_dt = datetime.strptime(due_date, '%Y-%m-%dT%H:%M')
+        student_class = request.form.get('student_class')
+        section = request.form.get('section')
+        department = request.form.get('department')
         assignment = Assignment(
             title=title,
             description=description,
@@ -888,7 +940,10 @@ def create_assignment():
             created_by=current_user.id,
             allowed_file_types=allowed_file_types,
             assignment_filename=assignment_filename,
-            assignment_file_path=assignment_file_path
+            assignment_file_path=assignment_file_path,
+            student_class=student_class,
+            section=section,
+            department=department
         )
         db.session.add(assignment)
         db.session.commit()
@@ -911,9 +966,15 @@ def student_assignments():
     if current_user.role != 'student':
         flash('Access denied.', 'error')
         return redirect(url_for('dashboard'))
-    assignments = Assignment.query.all()
+    # Only show assignments matching the student's class, section, and department
+    assignments = Assignment.query.filter_by(
+        student_class=current_user.student_class,
+        section=current_user.section,
+        department=current_user.department
+    ).all()
     submissions = {s.assignment_id: s for s in AssignmentSubmission.query.filter_by(user_id=current_user.id).all()}
-    return render_template('student_assignments.html', assignments=assignments, submissions=submissions)
+    now = datetime.now()
+    return render_template('student_assignments.html', assignments=assignments, submissions=submissions, now=now)
 
 ALLOWED_EXTENSIONS = set(['pdf', 'docx', 'txt', 'py', 'java', 'cpp', 'c', 'js'])
 UPLOAD_FOLDER = os.path.join(os.getcwd(), 'assignment_uploads')
@@ -973,56 +1034,33 @@ def api_check_assignment_plagiarism(assignment_id, submission_id):
         return jsonify({'error': 'Unauthorized'}), 403
     assignment = Assignment.query.get_or_404(assignment_id)
     current_submission = AssignmentSubmission.query.get_or_404(submission_id)
-    all_submissions = AssignmentSubmission.query.filter_by(assignment_id=assignment_id).all()
+    # Fetch cached results from AssignmentPlagiarismResult
     results = []
-    current_text = read_file_text_and_images(current_submission.file_path, current_submission.filename)
-    for other in all_submissions:
-        if other.id == submission_id:
+    prs = AssignmentPlagiarismResult.query.filter_by(assignment_id=assignment_id, submission1_id=submission_id).all()
+    for pr in prs:
+        other = AssignmentSubmission.query.get(pr.submission2_id)
+        if not other or other.id == submission_id:
             continue
-        other_text = read_file_text_and_images(other.file_path, other.filename)
-        # Use all algorithms/models
-        from utils.plagiarism_detector import PlagiarismDetector
-        detector = PlagiarismDetector()
-        rabin_karp_score = detector.rabin_karp(current_text, other_text)
-        levenshtein_score = detector.levenshtein_distance(current_text, other_text)
-        kmp_score = detector.kmp_search(current_text, other_text)
-        ast_score = None
-        if current_submission.filename.endswith('.py') and other.filename.endswith('.py'):
-            try:
-                ast_score = compare_python_ast(current_text, other_text)
-            except Exception:
-                ast_score = None
-        ml_score = ml_similarity(current_text, other_text)
-        details = {
-            'ml': {
-                'score': round(ml_score, 2),
-                'message': 'ML is 100% because the content is identical.' if ml_score == 100 else f'ML is {round(ml_score,2)}% because the content is {"very similar" if ml_score > 70 else "somewhat similar" if ml_score > 40 else "not similar"}.'
-            },
-            'rabin_karp': {
-                'score': round(rabin_karp_score, 2),
-                'message': f'Rabin-Karp is {round(rabin_karp_score,2)}%: This algorithm checks for repeated substrings using hashing. A low score does not necessarily mean the files are not similar.'
-            },
-            'levenshtein': {
-                'score': round(levenshtein_score, 2),
-                'message': 'Levenshtein is 100% because the content is identical.' if levenshtein_score == 100 else f'Levenshtein is {round(levenshtein_score,2)}% because the content is {"very similar" if levenshtein_score > 70 else "somewhat similar" if levenshtein_score > 40 else "not similar"}.'
-            },
-            'kmp': {
-                'score': round(kmp_score, 2),
-                'message': f'KMP is {round(kmp_score,2)}%: This algorithm checks for repeated substrings. A low score does not necessarily mean the files are not similar.'
-            },
-            'ast': {
-                'score': round(ast_score, 2) if ast_score is not None else None,
-                'message': 'AST is 100% because the code structure is identical.' if ast_score == 100 else (f'AST is {round(ast_score,2)}% because the code structure is {"very similar" if ast_score and ast_score > 70 else "somewhat similar" if ast_score and ast_score > 40 else "not similar"}' if ast_score is not None else 'N/A')
-            }
-        }
+        details = json.loads(pr.details) if pr.details else {}
         results.append({
-            'submission1': current_submission.id,
+            'submission1': submission_id,
             'submission2': other.id,
             'student1_name': User.query.get(current_submission.user_id).username,
             'student2_name': User.query.get(other.user_id).username,
             'details': details
         })
-    return jsonify({'results': results})
+    # Only include results where at least one algorithm score is > 70
+    filtered_results = []
+    for r in results:
+        details = r['details']
+        if any(obj.get('score') is not None and obj.get('score') > 70 for obj in details.values()):
+            filtered_results.append(r)
+    return jsonify({'results': filtered_results})
+
+def normalize_text(text):
+    if not text:
+        return ''
+    return ' '.join(text.lower().split())
 
 @app.route('/submit_assignment/<int:assignment_id>', methods=['GET', 'POST'])
 @login_required
@@ -1031,17 +1069,28 @@ def submit_assignment(assignment_id):
         flash('Access denied.', 'error')
         return redirect(url_for('dashboard'))
     assignment = Assignment.query.get_or_404(assignment_id)
+    now = datetime.now()
+    # Prevent upload after due date
+    if now > assignment.due_date:
+        flash('Assignment submission is closed (past due date).', 'error')
+        return redirect(url_for('student_assignments'))
+    existing_submission = AssignmentSubmission.query.filter_by(assignment_id=assignment_id, user_id=current_user.id).first()
     if request.method == 'POST':
         file = request.files['file']
         if not file:
             flash('No file uploaded.', 'error')
             return redirect(request.url)
         filename = secure_filename(file.filename)
-        if not allowed_file(filename, assignment.allowed_file_types):
-            flash('File type not allowed.', 'error')
-            return redirect(request.url)
         file_path = os.path.join(UPLOAD_FOLDER, filename)
         file.save(file_path)
+        if existing_submission:
+            try:
+                if os.path.exists(existing_submission.file_path):
+                    os.remove(existing_submission.file_path)
+            except Exception:
+                pass
+            db.session.delete(existing_submission)
+            db.session.commit()
         submission = AssignmentSubmission(
             assignment_id=assignment_id,
             user_id=current_user.id,
@@ -1050,9 +1099,69 @@ def submit_assignment(assignment_id):
         )
         db.session.add(submission)
         db.session.commit()
+        # --- Plagiarism precompute and cache ---
+        from utils.plagiarism_detector import PlagiarismDetector
+        assignment_submissions = AssignmentSubmission.query.filter_by(assignment_id=assignment_id).all()
+        for i, s1 in enumerate(assignment_submissions):
+            text1 = normalize_text(read_file_text_and_images(s1.file_path, s1.filename))
+            for j, s2 in enumerate(assignment_submissions):
+                if i >= j:
+                    continue
+                text2 = normalize_text(read_file_text_and_images(s2.file_path, s2.filename))
+                detector = PlagiarismDetector()
+                rabin_karp_score = detector.rabin_karp(text1, text2)
+                levenshtein_score = detector.levenshtein_distance(text1, text2)
+                kmp_score = detector.kmp_search(text1, text2)
+                ast_score = None
+                if s1.filename.endswith('.py') and s2.filename.endswith('.py'):
+                    try:
+                        from app import compare_python_ast
+                        ast_score = compare_python_ast(text1, text2)
+                    except Exception:
+                        ast_score = None
+                from app import ml_similarity
+                ml_score = ml_similarity(text1, text2)
+                print(f'Plagiarism scores for {s1.filename} vs {s2.filename}:', rabin_karp_score, levenshtein_score, kmp_score, ast_score, ml_score)
+                details = json.dumps({
+                    'ml': {'score': round(ml_score, 2)},
+                    'rabin_karp': {'score': round(rabin_karp_score, 2)},
+                    'levenshtein': {'score': round(levenshtein_score, 2)},
+                    'kmp': {'score': round(kmp_score, 2)},
+                    'ast': {'score': round(ast_score, 2) if ast_score is not None else None}
+                })
+                similarity = sum([s for s in [ml_score, rabin_karp_score, levenshtein_score, kmp_score, ast_score] if s is not None]) / len([s for s in [ml_score, rabin_karp_score, levenshtein_score, kmp_score, ast_score] if s is not None])
+                for pair in [(s1.id, s2.id), (s2.id, s1.id)]:
+                    pr = AssignmentPlagiarismResult.query.filter_by(assignment_id=assignment_id, submission1_id=pair[0], submission2_id=pair[1]).first()
+                    if not pr:
+                        pr = AssignmentPlagiarismResult(assignment_id=assignment_id, submission1_id=pair[0], submission2_id=pair[1], similarity=similarity, details=details)
+                        db.session.add(pr)
+                    else:
+                        pr.similarity = similarity
+                        pr.details = details
+        db.session.commit()
+        # --- End plagiarism precompute ---
         flash('Assignment submitted successfully!', 'success')
         return redirect(url_for('student_assignments'))
-    return render_template('submit_assignment.html', assignment=assignment)
+    return render_template('submit_assignment.html', assignment=assignment, existing_submission=existing_submission, now=now)
+
+@app.route('/delete_submission/<int:submission_id>', methods=['POST'])
+@login_required
+def delete_submission(submission_id):
+    submission = AssignmentSubmission.query.get_or_404(submission_id)
+    assignment = Assignment.query.get(submission.assignment_id)
+    now = datetime.now()
+    if current_user.id != submission.user_id or now > assignment.due_date:
+        flash('Cannot delete submission after due date or not your submission.', 'error')
+        return redirect(url_for('student_assignments'))
+    try:
+        if os.path.exists(submission.file_path):
+            os.remove(submission.file_path)
+    except Exception:
+        pass
+    db.session.delete(submission)
+    db.session.commit()
+    flash('Submission deleted.', 'success')
+    return redirect(url_for('student_assignments'))
 
 @app.route('/review_assignment/<int:assignment_id>', methods=['GET', 'POST'])
 @login_required
@@ -1103,7 +1212,41 @@ def download_assignment_file(filename):
 def download_submission_file(filename):
     return send_from_directory(UPLOAD_FOLDER, filename, as_attachment=True)
 
+@app.route('/delete_assignment/<int:assignment_id>', methods=['POST'])
+@login_required
+def delete_assignment(assignment_id):
+    assignment = Assignment.query.get_or_404(assignment_id)
+    if current_user.role != 'teacher' or assignment.created_by != current_user.id:
+        flash('You are not authorized to delete this assignment.', 'error')
+        return redirect(url_for('teacher_assignments'))
+    # Delete all related plagiarism results
+    AssignmentPlagiarismResult.query.filter_by(assignment_id=assignment_id).delete()
+    db.session.commit()
+    # Delete all related submissions and files
+    submissions = AssignmentSubmission.query.filter_by(assignment_id=assignment_id).all()
+    for sub in submissions:
+        try:
+            if os.path.exists(sub.file_path):
+                os.remove(sub.file_path)
+        except Exception:
+            pass
+        db.session.delete(sub)
+    db.session.commit()
+    db.session.delete(assignment)
+    db.session.commit()
+    flash('Assignment and all related data deleted.', 'success')
+    return redirect(url_for('teacher_assignments'))
+
 pytesseract.pytesseract.tesseract_cmd = r'C:\\Program Files\\Tesseract-OCR\\tesseract.exe'
+
+@app.template_filter('from_json')
+def from_json_filter(s):
+    if not s:
+        return []
+    try:
+        return json.loads(s)
+    except Exception:
+        return []
 
 if __name__ == '__main__':
     app.run(debug=True) 
