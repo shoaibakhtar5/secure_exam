@@ -24,10 +24,28 @@
                 <tr class="transition-all duration-200 bg-gradient-to-r from-gray-900/90 to-gray-800/90 hover:from-blue-900/80 hover:to-purple-900/80 border-b border-gray-800 align-middle rounded-xl shadow-md">
                     <td class="py-6 px-4 align-middle font-bold text-white text-base">{{ assignment.title }}</td>
                     <td class="py-6 px-4 align-middle">
-                        {% if submissions[assignment.id] %}
-                            <a href="{{ url_for('download_submission_file', filename=submissions[assignment.id].filename) }}" class="underline text-blue-400 hover:text-blue-200">{{ submissions[assignment.id].filename }}</a>
+                        {% if assignment.assignment_filename %}
+                            <a href="{{ url_for('download_assignment_file', filename=assignment.assignment_filename) }}"
+                               class="inline-flex items-center px-3 py-1 rounded-lg bg-blue-700 text-white hover:bg-blue-800 transition-all text-sm font-semibold shadow-md mb-1"
+                               style="margin-bottom: 4px;">
+                               <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
+                               </svg>
+                               Download
+                            </a>
                         {% else %}
-                            <span class="text-gray-500">-</span>
+                            <span class="text-gray-500">No file</span>
+                        {% endif %}
+                        <br>
+                        {% if submissions[assignment.id] %}
+                            <a href="{{ url_for('download_submission_file', filename=submissions[assignment.id].filename) }}"
+                               class="inline-flex items-center px-3 py-1 rounded-lg bg-green-700 text-white hover:bg-green-800 transition-all text-sm font-semibold shadow-md mt-1"
+                               style="margin-top: 2px;">
+                               <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
+                               </svg>
+                               Your File
+                            </a>
                         {% endif %}
                     </td>
                     <td class="py-6 px-4 align-middle">

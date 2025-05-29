@@ -27,6 +27,15 @@ app.secret_key = os.urandom(24)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:Shabi6264%40@127.0.0.1:3306/secure_exam'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+# Configure upload folders with absolute paths
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+ASSIGNMENT_UPLOAD_FOLDER = os.path.join(BASE_DIR, 'assignment_files')
+UPLOAD_FOLDER = os.path.join(BASE_DIR, 'assignment_uploads')
+
+# Create upload directories if they don't exist
+os.makedirs(ASSIGNMENT_UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
 db = SQLAlchemy(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -908,9 +917,6 @@ def delete_exam(exam_id):
     flash('Exam and all related data deleted successfully.', 'success')
     return redirect(url_for('dashboard'))
 
-ASSIGNMENT_UPLOAD_FOLDER = os.path.join(os.getcwd(), 'assignment_files')
-os.makedirs(ASSIGNMENT_UPLOAD_FOLDER, exist_ok=True)
-
 @app.route('/create_assignment', methods=['GET', 'POST'])
 @login_required
 def create_assignment():
@@ -977,8 +983,6 @@ def student_assignments():
     return render_template('student_assignments.html', assignments=assignments, submissions=submissions, now=now)
 
 ALLOWED_EXTENSIONS = set(['pdf', 'docx', 'txt', 'py', 'java', 'cpp', 'c', 'js'])
-UPLOAD_FOLDER = os.path.join(os.getcwd(), 'assignment_uploads')
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 def allowed_file(filename, allowed_types):
     ext = filename.rsplit('.', 1)[-1].lower()
